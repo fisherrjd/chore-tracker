@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
+    "pytest>=9.0.3",
     "python-multipart>=0.0.32",
     "pyyaml>=6.0",
     "uvicorn[standard]>=0.49.0",
@@ -16,6 +17,14 @@ dependencies = [
 
 [project.scripts]
 chore-tracker = "chore_tracker.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:DeprecationWarning",
+]
 
 [build-system]
 requires = ["hatchling"]
