@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Members — Chore Tracker{% endblock %}
+{% block content %}
+
+<h1 class="page-title">Members</h1>
+
+{% if members %}
+<table class="members-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>ntfy topic</th>
+      <th>Notification URL</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for member in members %}
+    <tr>
+      <td><strong>{{ member.name }}</strong></td>
+      <td><code>{{ member.ntfy }}</code></td>
+      <td><a href="https://ntfy.sh/{{ member.ntfy }}" target="_blank" class="muted">ntfy.sh/{{ member.ntfy }}</a></td>
+      <td style="text-align:right">
+        <form method="post" action="/members/delete"
+              onsubmit="return confirm('Remove {{ member.name }}?')">
+          <input type="hidden" name="name" value="{{ member.name }}">
+          <button class="btn btn-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">No members yet. Add one below.</div>
+{% endif %}
+
+<p class="section-label" style="margin-top:1.75rem">Add a member</p>
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/members" class="form-row">
+      <input type="text" name="name" placeholder="Name (e.g. Hannah)" required>
+      <input type="text" name="ntfy" placeholder="ntfy topic (e.g. hannah)" required>
+      <button class="btn btn-primary">Add</button>
+    </form>
+    <p class="hint">The ntfy topic is the last part of the URL — <code>ntfy.sh/<strong>hannah</strong></code></p>
+  </div>
+</div>
+
+{% endblock %}

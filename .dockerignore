@@ -1,0 +1,12 @@
+.git
+.direnv
+.venv
+result*
+__pycache__/
+*.pyc
+*.pyo
+.env
+.python-version
+TODO.md
+README.md
+default.nix

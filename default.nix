@@ -7,7 +7,7 @@
     { }
 }:
 let
-  name = "vibe";
+  name = "chore-tracker";
   uvEnv = pkgs.uv-nix.mkEnv {
     inherit name; python = pkgs.python314;
     workspaceRoot = pkgs.hax.filterSrc { path = ./.; };

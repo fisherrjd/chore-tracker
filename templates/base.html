@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Chore Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-nav">
+    <a class="brand" href="/">🧹 Chore Tracker</a>
+    <nav>
+      <a href="/" class="{{ 'active' if request.url.path == '/' }}">Schedule</a>
+      <a href="/rooms" class="{{ 'active' if request.url.path.startswith('/rooms') }}">Rooms</a>
+      <a href="/members" class="{{ 'active' if request.url.path.startswith('/members') }}">Members</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    {% if msg %}
+    <div class="flash {{ kind }}">{{ msg }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

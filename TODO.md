@@ -35,3 +35,7 @@ Backend:
 - Python
 - Fast API
 - uv2nix
+
+
+Frontend: 
+- ??? I don't know this
