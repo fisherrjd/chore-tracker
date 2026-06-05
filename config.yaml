@@ -1,17 +1,14 @@
 start_date: '2026-06-04'
-ntfy_base_url: https://ntfy.sh
+ntfy_base_url: https://ntfy.jade.rip
 notify_time: 08:00
 members:
 - name: Jade
-  ntfy: jade
 - name: Hannah
-  ntfy: hannah
 rooms:
 - name: Kitchen
   tasks:
-  - Dishes
-  - Sweep & mop floor
   - Wipe down counters & stovetop
+  - Dishes
 - name: Living Room
   tasks:
   - Vacuum
@@ -19,7 +16,6 @@ rooms:
   - Tidy up
 - name: Master Bedroom
   tasks:
-  - Make bed
   - Vacuum
   - Dust surfaces
 - name: Own Office
@@ -30,3 +26,5 @@ rooms:
 - name: Bathroom
   tasks:
   - Clean toilet
+  - Vacuum
+  - Clean Mirror

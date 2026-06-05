@@ -136,19 +136,24 @@ async def members_page(request: Request, msg: str = "", kind: str = "success"):
     config = load_config(CONFIG_PATH)
     return templates.TemplateResponse(
         request=request, name="members.html",
-        context={"members": config.members, "msg": msg, "kind": kind},
+        context={
+            "members": config.members,
+            "ntfy_base_url": config.ntfy_base_url,
+            "msg": msg,
+            "kind": kind,
+        },
     )
 
 
 @app.post("/members")
-async def add_member(name: str = Form(...), ntfy: str = Form(...)):
+async def add_member(name: str = Form(...)):
     config = load_config(CONFIG_PATH)
-    name, ntfy = name.strip(), ntfy.strip()
-    if name and ntfy and not any(m.name == name for m in config.members):
-        config.members.append(Member(name=name, ntfy=ntfy))
+    name = name.strip()
+    if name and not any(m.name == name for m in config.members):
+        config.members.append(Member(name=name))
         save_config(config, CONFIG_PATH)
         return redirect("/members", f"Added '{name}'")
-    return redirect("/members", "Member already exists or fields are empty", "warning")
+    return redirect("/members", "Member already exists or name is empty", "warning")
 
 
 @app.post("/members/delete")

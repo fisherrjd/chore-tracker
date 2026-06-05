@@ -6,7 +6,11 @@ from pydantic import BaseModel, field_validator
 
 class Member(BaseModel):
     name: str
-    ntfy: str  # ntfy.sh topic, e.g. "jade" → ntfy.sh/jade
+
+    @property
+    def topic(self) -> str:
+        # ntfy topic derived from the member's name, e.g. "Jade" → <base>/jade
+        return self.name.lower()
 
 
 class Room(BaseModel):

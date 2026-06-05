@@ -9,17 +9,16 @@
   <thead>
     <tr>
       <th>Name</th>
-      <th>ntfy topic</th>
       <th>Notification URL</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
     {% for member in members %}
+    {% set url = ntfy_base_url.rstrip('/') ~ '/' ~ member.topic %}
     <tr>
       <td><strong>{{ member.name }}</strong></td>
-      <td><code>{{ member.ntfy }}</code></td>
-      <td><a href="https://ntfy.sh/{{ member.ntfy }}" target="_blank" class="muted">ntfy.sh/{{ member.ntfy }}</a></td>
+      <td><a href="{{ url }}" target="_blank" class="muted">{{ url }}</a></td>
       <td style="text-align:right">
         <form method="post" action="/members/delete"
               onsubmit="return confirm('Remove {{ member.name }}?')">
@@ -40,10 +39,9 @@
   <div class="card-body">
     <form method="post" action="/members" class="form-row">
       <input type="text" name="name" placeholder="Name (e.g. Hannah)" required>
-      <input type="text" name="ntfy" placeholder="ntfy topic (e.g. hannah)" required>
       <button class="btn btn-primary">Add</button>
     </form>
-    <p class="hint">The ntfy topic is the last part of the URL — <code>ntfy.sh/<strong>hannah</strong></code></p>
+    <p class="hint">Notifications go to <code>{{ ntfy_base_url.rstrip('/') }}/<strong>name</strong></code> — the topic is just the member's name.</p>
   </div>
 </div>
 

@@ -4,7 +4,7 @@ from .scheduler import get_assignment, get_day_index
 
 
 async def send_notification(member: Member, room: str, tasks: list[str], ntfy_base_url: str) -> bool:
-    url = f"{ntfy_base_url.rstrip('/')}/{member.ntfy}"
+    url = f"{ntfy_base_url.rstrip('/')}/{member.topic}"
     task_list = "\n".join(f"• {t}" for t in tasks) if tasks else "(no tasks defined)"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
