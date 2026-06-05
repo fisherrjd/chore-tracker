@@ -1,6 +1,7 @@
 import os
-import uvicorn
 from pathlib import Path
+
+import uvicorn
 
 
 def run():
