@@ -23,7 +23,7 @@
   {% for person, room_name in schedule[0].assignments.items() %}
   {% set room = room_map.get(room_name) %}
   <div class="today-card">
-    <div class="person">{{ person }}</div>
+    <div class="person"><a href="/checklist/{{ person | urlencode }}">{{ person }}</a></div>
     <div class="room">{{ room_name }}</div>
     {% if room and room.tasks %}
     <ul class="task-list">

@@ -8,9 +8,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, load_config, save_config
 from .notifier import notify_today
-from .scheduler import get_day_index, get_schedule
+from .scheduler import get_assignment, get_day_index, get_schedule
 
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
 CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
@@ -180,6 +181,51 @@ async def send_today():
     if failed:
         parts.append(f"Failed: {', '.join(failed)}")
     return redirect("/", " | ".join(parts), "success" if not failed else "warning")
+
+
+# ── Daily checklist ───────────────────────────────────────────────────────────
+
+def _todays_room(config: AppConfig, member: str) -> str | None:
+    idx = get_day_index(config.start_date)
+    assignments = get_assignment(
+        idx, [r.name for r in config.rooms], [m.name for m in config.members]
+    )
+    return assignments.get(member)
+
+
+@app.get("/checklist/{member}")
+async def checklist(request: Request, member: str, msg: str = "", kind: str = "success"):
+    config = load_config(CONFIG_PATH)
+    if not any(m.name == member for m in config.members):
+        return redirect("/", f"Unknown member '{member}'", "warning")
+    idx = get_day_index(config.start_date)
+    room_name = _todays_room(config, member)
+    room = next((r for r in config.rooms if r.name == room_name), None)
+    tasks = room.tasks if room else []
+    return templates.TemplateResponse(
+        request=request, name="checklist.html",
+        context={
+            "member": member,
+            "room_name": room_name,
+            "tasks": tasks,
+            "done": get_done(idx, member),
+            "msg": msg,
+            "kind": kind,
+        },
+    )
+
+
+@app.post("/checklist/{member}")
+async def update_checklist(member: str, tasks: list[str] = Form(default=[])):
+    config = load_config(CONFIG_PATH)
+    if not any(m.name == member for m in config.members):
+        return redirect("/", f"Unknown member '{member}'", "warning")
+    idx = get_day_index(config.start_date)
+    room = next((r for r in config.rooms if r.name == _todays_room(config, member)), None)
+    valid = set(room.tasks) if room else set()
+    # Only record tasks that actually belong to today's assigned room.
+    set_done(idx, member, [t for t in tasks if t in valid])
+    return redirect(f"/checklist/{member}")
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────

@@ -422,3 +422,40 @@ input[type="text"]:focus {
 }
 
 .empty-state a { color: var(--accent-dark); }
+
+/* ── Daily checklist ── */
+.today-card .person a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.today-card .person a:hover { color: var(--accent-dark); }
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .6rem .5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: .98rem;
+  transition: background .12s ease;
+}
+.check-row:hover { background: var(--bg); }
+
+.check-row input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.check-row.is-done span {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
