@@ -2,7 +2,7 @@ name: Build and publish image
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]   # main + every feature branch (temp builds)
     tags: ["v*"]
 
 concurrency:
@@ -36,8 +36,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            # main branch → rolling pointer + immutable per-commit
             type=raw,value=main-latest,enable={{is_default_branch}}
             type=sha,prefix=main-,enable={{is_default_branch}}
+            # feature branches → temp build, e.g. v0.2.0-b292c711
+            type=sha,prefix={{branch}}-b,enable=${{ github.ref_type == 'branch' && github.ref_name != 'main' }}
+            # version tags (vX.Y.Z) → 0.2.0 and the moving 0.2 pointer
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
