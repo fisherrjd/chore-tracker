@@ -83,6 +83,16 @@ async def home(request: Request, msg: str = "", kind: str = "success"):
     n_members = len(config.members)
     half_cycle = (n_rooms // n_members) if n_members else 0
     room_map = {r.name: r for r in config.rooms}
+    # Per-person progress for today, so the schedule cards can show "3/7 done".
+    done_map: dict[str, dict[str, int]] = {}
+    if schedule:
+        for person, room_name in schedule[0]["assignments"].items():
+            room = room_map.get(room_name)
+            tasks = set(room.tasks) if room else set()
+            done_map[person] = {
+                "done": len(get_done(today_idx, person) & tasks),
+                "total": len(tasks),
+            }
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -92,6 +102,7 @@ async def home(request: Request, msg: str = "", kind: str = "success"):
             "half_cycle": half_cycle,
             "notify_times": config.notify_times,
             "room_map": room_map,
+            "done_map": done_map,
             "msg": msg,
             "kind": kind,
         },

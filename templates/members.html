@@ -5,6 +5,7 @@
 <h1 class="page-title">Members</h1>
 
 {% if members %}
+<div class="table-scroll">
 <table class="members-table">
   <thead>
     <tr>
@@ -30,6 +31,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <div class="empty-state">No members yet. Add one below.</div>
 {% endif %}

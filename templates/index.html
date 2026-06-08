@@ -22,15 +22,21 @@
 <div class="today-grid">
   {% for person, room_name in schedule[0].assignments.items() %}
   {% set room = room_map.get(room_name) %}
-  <div class="today-card">
-    <div class="person"><a href="/checklist/{{ person | urlencode }}">{{ person }}</a></div>
+  {% set prog = done_map.get(person) %}
+  <a class="today-card" href="/checklist/{{ person | urlencode }}">
+    <div class="card-top">
+      <div class="person">{{ person }}</div>
+      {% if prog and prog.total %}
+      <span class="progress-badge {{ 'is-complete' if prog.done == prog.total }}">{{ prog.done }}/{{ prog.total }} done</span>
+      {% endif %}
+    </div>
     <div class="room">{{ room_name }}</div>
     {% if room and room.tasks %}
     <ul class="task-list">
       {% for task in room.tasks %}<li>{{ task }}</li>{% endfor %}
     </ul>
     {% endif %}
-  </div>
+  </a>
   {% endfor %}
 </div>
 
@@ -40,6 +46,7 @@
   <span class="muted">All rooms covered every {{ half_cycle }} day{{ 's' if half_cycle != 1 }} · notifications at <a href="/settings">{{ notify_times | join(", ") if notify_times else "off" }}</a></span>
 </div>
 
+<div class="table-scroll">
 <table class="schedule-table">
   <thead>
     <tr>
@@ -63,6 +70,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 
 {% endif %}
 {% endblock %}

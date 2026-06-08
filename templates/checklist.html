@@ -11,7 +11,10 @@
   {{ room_name }} has no tasks defined. <a href="/rooms">Add some</a>.
 </div>
 {% else %}
-<p class="section-label">{{ room_name }} · {{ done|length }}/{{ tasks|length }} done</p>
+<p class="checklist-progress">
+  <span class="room">{{ room_name }}</span>
+  <span class="count {{ 'is-complete' if done|length == tasks|length }}">{{ done|length }}/{{ tasks|length }} done</span>
+</p>
 <div class="card">
   <div class="card-body">
     <form method="post" action="/checklist/{{ member | urlencode }}" class="checklist">

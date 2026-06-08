@@ -1,47 +1,85 @@
-# TODO: UI Refinement for Mobile-First AI Agent Interface
+# TODO: Mobile-First UI for Chore Tracker
 
-The overall objective is to transform the current user interface into a sleek, modern, highly responsive UI tailored specifically for mobile devices, with a strict focus on fitting perfectly on an iPhone (testing against standard iPhone 13/14/15/16 screen dimensions, 390x844px and up). 
+Goal: a clean, snappy UI that fits perfectly on an iPhone (test against 390x844px and up). Native feel, no desktop clutter.
 
-The AI agent should feel native, snappy, and clear of desktop clutter.
+This app is a **rotation scheduler**, not a flat to-do list. Keep that model front of mind:
+
+- **Rooms** each own a list of tasks (defined on `/rooms`, persisted to `config.yaml`).
+- **Members** are the people in rotation (`/members`).
+- The **schedule** assigns each member a room per day and rotates so every room is covered each half-cycle. The home page (`/`) shows today's assignments plus an upcoming table.
+- A per-member **daily checklist** (`/checklist/{member}`) shows the tasks for *that member's room today*, with checkboxes. This is the screen people actually open each day.
+- **Settings** (`/settings`) manages notification times; ntfy reminders fire on a cron.
+
+So there are two "list" surfaces — the **schedule** (read-only rotation) and the **checklist** (tappable tasks) — and three **config** pages (rooms, members, settings) that are add/remove forms. Don't collapse these into a single flat list.
+
+Stack: FastAPI + Jinja2 templates + one `static/style.css`. No React, no build step. Every action is currently a POST→303 redirect (`redirect()` in `chore_tracker/main.py`), so the whole UI is server-rendered.
+
+If reloads start feeling clunky, the checklist and the add/remove forms are the first places HTMX would help (swap a row in place instead of reloading). Alpine.js can handle small client-only toggles. Both are one script tag, no build — don't add either until reloads actually bug you. The checklist already auto-submits on checkbox change (`onchange="this.form.submit()"`), so it's the obvious HTMX candidate.
 
 ---
 
-## 🎯 Global System Prompt Instructions for UI Generation
+## Design Principles
 
-When regenerating or adjusting components, ensure the following principles are strictly maintained:
-- **Design System:** Use a minimalist, modern aesthetic. Prefer a clean dark/light ambient background over stark pure black or white. Use soft, desaturated accent colors (e.g., slate, deep indigo, or sage green) instead of neon colors.
-- **Box Sizing:** Always use `box-sizing: border-box` to prevent elements with padding from overflowing the iPhone screen bounds.
-- **Layout Model:** Use strict vertical stacking, block-level centering, or standard CSS tables where vertical alignment is needed. *Avoid flexbox/grid if compiling down to environments with limited layout engines (like PDF previewers), otherwise use responsive media queries targeting max-width: 480px.*
-- **No Horizontal Scroll:** Zero horizontal overflow on the body element. All content must wrap naturally.
+Apply these globally in `static/style.css` and `templates/base.html`, on every screen:
+
+- **Aesthetic:** minimalist and modern. Soft ambient dark or light background, not pure black or white. Desaturated accents (slate, deep indigo, or sage green). No neon.
+- **Box sizing:** set `box-sizing: border-box` globally so padded elements never overflow the screen.
+- **Layout:** use flexbox or grid freely (this renders in a real browser, no engine limits). Target small screens with `@media (max-width: 480px)`.
+- **No horizontal scroll:** zero horizontal overflow on `body`. Everything wraps. Watch the schedule and members/settings `<table>`s — wide tables are the most likely thing to overflow on a phone (see Schedule section below).
 
 ---
 
-## 📋 High-Priority UI Checklist
+## Checklist
 
-### 1. Layout & Viewport Configuration
-- [ ] **Viewport Meta Tag:** Verify or inject `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">` to prevent unwanted auto-zooming on input focus on iOS.
-- [ ] **Page Padding:** Establish clean, consistent margins around the viewport. Set `@page` or root body boundaries to a tight but clean `12mm` or `15px` margin.
-- [ ] **Safe Area Insets:** Implement iOS safe-area-inset padding for iPhones with notches/dynamic islands (`padding-top: env(safe-area-inset-top);`, `padding-bottom: env(safe-area-inset-bottom);`).
+### 1. Layout and Viewport (global — `base.html` / `style.css`)
 
-### 2. Header & Branding
-- [ ] **Mobile Banner:** Create a compact, sticky top header bar with a muted accent background (e.g., slate grey or deep navy). 
-- [ ] **Minimalist Header Typography:** Change header text sizes to match mobile constraints. Scale down title fonts to `16pt` - `18pt` maximum.
-- [ ] **Status Indicator:** Add a subtle, pulsating inline status dot showing the AI Agent's connectivity state (e.g., "● Online", utilizing a desaturated soft green).
+- [x] **Viewport meta tag:** present in `base.html`; added `viewport-fit=cover` so the safe-area insets actually resolve. Did not add `user-scalable=no`.
+- [x] **Page padding:** `main.page` uses `15px` root padding on phones (`@media max-width:480px`).
+- [x] **Safe area insets:** header pads `env(safe-area-inset-top)`; `body`/`.page` pad `env(safe-area-inset-bottom)`.
 
-### 3. Chat Interface & Stream Flow (The Core Experience)
-- [ ] **Message Bubble Constraints:** Ensure message bubbles cap their width at `85%` of the screen width so they look like standard mobile chat bubbles.
-- [ ] **Alternating Bubble Styles:**
-  - **User Messages:** Crisp, light tint or subtle accent color background, right-aligned.
-  - **AI Agent Responses:** Pure background or contrasting soft panel background, left-aligned.
-- [ ] **Font Sizing:** Tighten body text inside bubbles to `10pt` or `11pt` for readability without causing text to blow up on smaller viewports.
-- [ ] **Code Block Wrap:** Force code blocks (`<pre>`, `<code>`) to use `white-space: pre-wrap;` and `word-break: break-word;` so they do not break layout width on iPhone screens.
+### 2. Header and Nav (`base.html`)
 
-### 4. Input Controls & Interactivity
-- [ ] **Sticky Bottom Input Bar:** Fix the chat input container to the absolute bottom of the viewport so it is always accessible via thumb.
-- [ ] **Mobile-Friendly Form Fields:** Input elements must have a minimum font size of `16px` (or equivalent pt) to explicitly bypass iOS Safari's default zoom-on-focus behavior.
-- [ ] **Compact Button Targets:** Style buttons to be easily tappable (minimum `44x44px` hit area per Apple Human Interface Guidelines) but visually sleek with rounded corners (`border-radius: 8px`).
+- [x] **Sticky header:** compact sticky top bar with a muted slate (`--header-bg: #2e3a35`) background; brand + four nav links live here.
+- [x] **Header typography:** brand is 17px (16px on mobile).
+- [x] **Mobile nav:** on phones the header drops to two tidy rows — brand, then the four links as an even, full-width tab strip (`flex:1` each). No horizontal scroll.
+- [x] **Active state:** active link gets a lighter background plus an inset accent underline so it's clearly distinct on the dark bar.
 
-### 5. Visual Refinements & Polish
-- [ ] **Accent Sidebar Elimination:** Remove full-width or heavy vertical accent lines (like thick left borders on cards) that look blocky on phone screens. Instead, use a subtle bottom border or soft background paneling.
-- [ ] **Scroll Snapping:** Ensure the message area automatically scrolls to the absolute bottom when new text tokens stream in from the AI.
-- [ ] **Typography Cleanup:** Ensure no equations or mathematical fallback blocks render as raw unstyled monospace text. Wrap variables or mathematical steps cleanly in styled inline spans (`font-family: 'Times New Roman', serif; font-style: italic;`).
+### 3. Schedule — home page (`index.html`)
+
+This is the rotation view, read-only. It is **not** where chores get added.
+
+- [x] **Today's assignments:** each person → room is now a full-width card that is itself an `<a>` to `/checklist/{member}` (single column on phones).
+- [x] **Summary indicator:** `home()` computes a `done_map`; cards show a "{done}/{total} done" pill that turns desaturated green (`.is-complete`) when the room is fully done.
+- [x] **Upcoming table:** wrapped in `.table-scroll` (overflow-x within its own container, with edge fade hints). The body never scrolls sideways.
+- [x] **Cycle marker:** `.cycle-dot` bumped to 7px and tinted with the accent so it stays legible.
+- [x] **Notify button:** full-width `.btn-notify` on phones for an easy thumb target.
+- [x] **Empty state:** the "No rooms or members" state now renders as an intentional bordered card, not a bare line.
+
+### 4. Checklist — the daily core experience (`checklist.html`)
+
+This is the screen to optimize hardest. Tasks come from the member's assigned room; they are **not** added or deleted here.
+
+- [x] **Task rows:** `.check-row` is full-width and the whole row is the tap target.
+- [x] **Done state:** checked tasks keep the strikethrough + muted `.is-done` look.
+- [x] **Immediate feedback:** unchanged — still `onchange="this.form.submit()"`. (HTMX left for later, per the goal's guidance not to add it until reloads bug us.)
+- [x] **Progress label:** promoted to a dedicated `.checklist-progress` line (room name + right-aligned, accent-when-complete count).
+- [x] **Tappable targets:** rows are `min-height: 48px`, checkbox enlarged to 1.3rem, `border-radius: 8px`.
+- [x] **Body font:** task rows render at 1rem (16px).
+- [x] **Empty states:** both "No room assigned" and "no tasks defined" render in styled `.empty-state` cards.
+
+### 5. Config pages — rooms / members / settings
+
+These are the add/remove surfaces. There is **no single global "add chore" bar** — adds are contextual:
+
+- [x] **Add forms:** `.add-task-form` / `.form-row` kept as input + button rows.
+- [x] **Input font size:** both `input[type="text"]` and `input[type="time"]` set to `16px` (was `.9rem`, which let iOS zoom).
+- [ ] **Sticky add bar (rooms only, optional):** left out — optional, and the goal says don't bother unless reloads bug us. Easy to add later.
+- [x] **Delete pattern:** per-row `.btn-danger` and the `confirm()` dialogs are untouched.
+- [x] **Members/settings tables:** both wrapped in `.table-scroll` so they pan within their container, not the body.
+
+### 6. Visual Polish (global)
+
+- [x] **Drop heavy borders:** no left accent bars; rows use soft bottom dividers and the `.card` paneling.
+- [x] **Scroll behavior:** `body { overflow-x: hidden }` plus per-container table scroll means no sideways body scroll. The `base.html` scroll-restore script is untouched.
+- [x] **Tappable targets everywhere:** `.btn` is `min-height: 44px`; `.btn-danger` is `min-height/width: 44px`.
+- [x] **Flash messages:** `.flash` lives in `main.page`, so it sits below the sticky header and pushes content down rather than covering it.
