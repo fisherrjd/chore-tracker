@@ -37,7 +37,11 @@ def test_add_duplicate_room_is_rejected(client):
 
 
 def test_add_and_delete_task(client):
-    client.post("/rooms/Kitchen/tasks", data={"task": "Mop"})
+    r = client.post("/rooms/Kitchen/tasks", data={"task": "Mop"}, follow_redirects=False)
+    # Redirect to a clean /rooms?msg=... — no '#anchor' that would swallow the
+    # query string (scroll position is restored client-side instead).
+    loc = r.headers["location"]
+    assert loc.startswith("/rooms?") and "#" not in loc
     rooms = {r.name: r for r in load_config(config_path()).rooms}
     assert "Mop" in rooms["Kitchen"].tasks
 

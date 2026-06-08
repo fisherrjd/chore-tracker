@@ -139,7 +139,7 @@ async def add_task(room_name: str, task: str = Form(...)):
             room.tasks.append(task)
             save_config(config, CONFIG_PATH)
             log.info("task.added", extra={"room": room_name, "task": task})
-            return redirect(f"/rooms#{room_name}", f"Added task to {room_name}")
+            return redirect("/rooms", f"Added task to {room_name}")
     return redirect("/rooms", "Room not found or task already exists", "warning")
 
 
