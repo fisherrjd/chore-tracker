@@ -79,7 +79,7 @@ def test_get_schedule_shape_and_dates():
     cfg = AppConfig.model_validate(default_config(start=date(2026, 1, 1)))
     schedule = get_schedule(cfg, days=5)
     assert len(schedule) == 5
-    assert schedule[0]["date"] == date.today()
+    assert schedule[0]["date"] == cfg.today
     for day in schedule:
         assert set(day) == {"date", "day_index", "assignments"}
         assert set(day["assignments"]) == {"Alice", "Bob"}

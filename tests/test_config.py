@@ -1,9 +1,10 @@
 """Config model + persistence. Pins the ntfy-topic-from-name behavior."""
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
 
+import chore_tracker.config as config_mod
 from chore_tracker.config import AppConfig, Member, Room, load_config, save_config
 
 
@@ -24,6 +25,29 @@ def test_appconfig_defaults():
     assert cfg.notify_time == "08:00"
     assert cfg.members == []
     assert cfg.rooms == []
+
+
+def test_timezone_defaults_to_denver():
+    assert AppConfig(start_date=date(2026, 1, 1)).timezone == "America/Denver"
+
+
+def test_today_uses_configured_timezone(monkeypatch):
+    """8pm on June 7 in Denver is already June 8 in UTC.
+
+    ``today`` must report the local (Denver) date, not the server's UTC date.
+    """
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # 2026-06-08 02:00 UTC == 2026-06-07 20:00 America/Denver (MDT, UTC-6)
+            instant = datetime(2026, 6, 8, 2, 0, tzinfo=timezone.utc)
+            return instant.astimezone(tz)
+
+    monkeypatch.setattr(config_mod, "datetime", FrozenDateTime)
+
+    cfg = AppConfig(start_date=date(2026, 1, 1), timezone="America/Denver")
+    assert cfg.today == date(2026, 6, 7)
 
 
 def test_start_date_parsed_from_string():
