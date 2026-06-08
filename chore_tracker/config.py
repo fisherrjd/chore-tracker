@@ -1,6 +1,8 @@
 import yaml
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
 from pydantic import BaseModel, field_validator
 
 
@@ -20,6 +22,7 @@ class Room(BaseModel):
 
 class AppConfig(BaseModel):
     start_date: date
+    timezone: str = "America/Denver"
     ntfy_base_url: str = "https://ntfy.sh"
     notify_time: str = "08:00"
     members: list[Member] = []
@@ -31,6 +34,19 @@ class AppConfig(BaseModel):
         if isinstance(v, str):
             return date.fromisoformat(v)
         return v
+
+    @property
+    def tzinfo(self) -> ZoneInfo:
+        return ZoneInfo(self.timezone)
+
+    @property
+    def today(self) -> date:
+        """Current calendar date in the configured timezone.
+
+        Using this instead of ``date.today()`` keeps the notion of "today" tied
+        to the household's wall clock rather than the server's (UTC) clock.
+        """
+        return datetime.now(self.tzinfo).date()
 
 
 def load_config(path: Path) -> AppConfig:
@@ -44,6 +60,7 @@ def load_config(path: Path) -> AppConfig:
 def save_config(config: AppConfig, path: Path) -> None:
     data = {
         "start_date": config.start_date.isoformat(),
+        "timezone": config.timezone,
         "ntfy_base_url": config.ntfy_base_url,
         "notify_time": config.notify_time,
         "members": [m.model_dump() for m in config.members],

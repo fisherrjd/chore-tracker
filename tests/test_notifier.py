@@ -85,6 +85,15 @@ def test_send_notification_swallows_exceptions(fake_http):
     assert ok is False
 
 
+def test_send_failure_is_logged(fake_http, caplog):
+    fake_http.raise_exc = True
+    with caplog.at_level("ERROR", logger="chore_tracker.notifier"):
+        asyncio.run(notifier.send_notification(Member(name="A"), "Den", ["x"], "https://n"))
+    record = next(r for r in caplog.records if r.message == "notify.send_failed")
+    assert record.member == "A"
+    assert record.exc_info is not None  # the original exception is attached
+
+
 def _config_today():
     return AppConfig(
         start_date=date.today(),

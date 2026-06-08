@@ -115,7 +115,7 @@ def test_checklist_only_records_valid_tasks(client):
     from chore_tracker.scheduler import get_day_index
 
     cfg = load_config(config_path())
-    idx = get_day_index(cfg.start_date)
+    idx = get_day_index(cfg.start_date, cfg.today)
     assert checks.get_done(idx, "Alice") == {"Dishes"}
 
 
@@ -125,7 +125,8 @@ def test_checklist_empty_submit_clears(client):
     from chore_tracker import checks
     from chore_tracker.scheduler import get_day_index
 
-    idx = get_day_index(load_config(config_path()).start_date)
+    cfg = load_config(config_path())
+    idx = get_day_index(cfg.start_date, cfg.today)
     assert checks.get_done(idx, "Alice") == set()
 
 

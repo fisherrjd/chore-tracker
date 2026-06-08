@@ -2,8 +2,8 @@ from datetime import date, timedelta
 from .config import AppConfig
 
 
-def get_day_index(start_date: date, today: date | None = None) -> int:
-    return ((today or date.today()) - start_date).days
+def get_day_index(start_date: date, today: date) -> int:
+    return (today - start_date).days
 
 
 def get_assignment(day_index: int, rooms: list[str], people: list[str]) -> dict[str, str]:
@@ -37,7 +37,7 @@ def get_assignment(day_index: int, rooms: list[str], people: list[str]) -> dict[
 def get_schedule(config: AppConfig, days: int = 14) -> list[dict]:
     room_names = [r.name for r in config.rooms]
     member_names = [m.name for m in config.members]
-    today = date.today()
+    today = config.today
     schedule = []
     for offset in range(days):
         day = today + timedelta(days=offset)

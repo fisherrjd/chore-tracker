@@ -1,4 +1,5 @@
 start_date: '2026-06-04'
+timezone: America/Denver
 ntfy_base_url: https://ntfy.jade.rip
 notify_time: 08:00
 members:

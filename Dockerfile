@@ -1,5 +1,11 @@
 FROM python:3.13-slim
 
+# tzdata: the slim image ships no IANA tz database, which `zoneinfo` needs to
+# resolve the configured timezone (e.g. America/Denver) for "today".
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # Pull uv binary from the official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
