@@ -3,7 +3,7 @@ timezone: America/Denver
 ntfy_base_url: https://ntfy.jade.rip
 dashboard_url: https://chores.jade.rip
 notify_times:
-- 08:00
+- '08:00'
 - '10:00'
 - '17:00'
 members:
@@ -12,24 +12,95 @@ members:
 rooms:
 - name: Kitchen
   tasks:
-  - Wipe down counters & stovetop
-  - Dishes
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Microwave
+  - Toaster
+  - Fridge
+  - Dishwasher
+  - Oven
+  - Sink
+  - Pantry Tidy
+  - Cabinet Wipe down
+  - Kitchen doors (back door + pantry door)
+  - Dishes!
+  - Trash / Recycle
+- name: Master Bathroom
+  tasks:
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Shower
+  - Toilet
+  - Sink
+  - Trash
 - name: Living Room
   tasks:
-  - Vacuum
-  - Dust surfaces
-  - Tidy up
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Wiping down coffee table
+  - Couch de-hair
+  - Fan dusting
+  - Teddy Toy Cleanup
+  - Shelf Wipe
 - name: Master Bedroom
   tasks:
-  - Vacuum
-  - Dust surfaces
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - VACUUM
+  - Change sheets?
+  - De-hair duvet
+  - Nightstand wipe down
+  - Fan wipe down
+  - Laundry?
+- name: Dining Room & Entry
+  tasks:
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Table Wipe
+  - Jacket + Shoe Assessment
+  - Mirror Wipe
+  - Wipe Table Feet (No more hair)
+  - Wipe Chairs
 - name: Own Office
   tasks:
-  - Vacuum
-  - Tidy desk
-  - Empty trash
-- name: Bathroom
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+- name: Hallways
   tasks:
-  - Clean toilet
-  - Vacuum
-  - Clean Mirror
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Move Stuff To Storage
+- name: Backyard
+  tasks:
+  - Sweep / Vacuum
+  - Wipe down surfaces (window sills)
+  - Dust
+  - General tidy
+  - Plant watering
+  - Pooper Scoop
+  - Rake up leaves / debris
+  - Trash cleanup
+  - Sweep Patio
+  - Grill Clean
+  - Wipe Furniture
