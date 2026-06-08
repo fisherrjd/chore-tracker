@@ -2,7 +2,7 @@
 import yaml
 
 from chore_tracker.config import load_config
-from tests.helpers import config_path, write_config
+from tests.helpers import config_path, default_config, write_config
 
 
 # ── Schedule / home ───────────────────────────────────────────────────────────
@@ -158,6 +158,35 @@ def test_notify_today_no_assignments_warns(client, monkeypatch):
     r = client.post("/notify/today", follow_redirects=False)
     assert "No+assignments" in r.headers["location"].replace("%20", "+")
     assert "kind=warning" in r.headers["location"]
+
+
+# ── Settings: notification times ──────────────────────────────────────────────
+
+def test_settings_page_lists_notify_times(client):
+    write_config({**default_config(), "notify_times": ["08:00", "17:00"]})
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert "08:00" in r.text and "17:00" in r.text
+
+
+def test_add_notify_time_persists_and_sorts(client):
+    write_config({**default_config(), "notify_times": ["08:00"]})
+    client.post("/settings/notify-times", data={"time": "17:00"})
+    client.post("/settings/notify-times", data={"time": "10:00"})
+    assert load_config(config_path()).notify_times == ["08:00", "10:00", "17:00"]
+
+
+def test_add_invalid_notify_time_warns_and_keeps_existing(client):
+    write_config({**default_config(), "notify_times": ["08:00"]})
+    r = client.post("/settings/notify-times", data={"time": "99:99"}, follow_redirects=False)
+    assert "kind=warning" in r.headers["location"]
+    assert load_config(config_path()).notify_times == ["08:00"]
+
+
+def test_delete_notify_time(client):
+    write_config({**default_config(), "notify_times": ["08:00", "17:00"]})
+    client.post("/settings/notify-times/delete", data={"time": "08:00"})
+    assert load_config(config_path()).notify_times == ["17:00"]
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────

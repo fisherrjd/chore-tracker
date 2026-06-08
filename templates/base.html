@@ -13,6 +13,7 @@
       <a href="/" class="{{ 'active' if request.url.path == '/' }}">Schedule</a>
       <a href="/rooms" class="{{ 'active' if request.url.path.startswith('/rooms') }}">Rooms</a>
       <a href="/members" class="{{ 'active' if request.url.path.startswith('/members') }}">Members</a>
+      <a href="/settings" class="{{ 'active' if request.url.path.startswith('/settings') }}">Settings</a>
     </nav>
   </header>
 

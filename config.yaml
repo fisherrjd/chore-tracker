@@ -1,7 +1,11 @@
 start_date: '2026-06-04'
 timezone: America/Denver
 ntfy_base_url: https://ntfy.jade.rip
-notify_time: 08:00
+dashboard_url: https://chores.jade.rip
+notify_times:
+- '08:00'
+- '10:00'
+- '17:00'
 members:
 - name: Jade
 - name: Hannah

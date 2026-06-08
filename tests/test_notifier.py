@@ -61,6 +61,22 @@ def test_send_notification_builds_url_from_base_and_topic(fake_http):
     assert "Dishes" in call["content"]
 
 
+def test_send_notification_adds_click_link_to_checklist(fake_http):
+    asyncio.run(
+        notifier.send_notification(
+            Member(name="Jade"), "Kitchen", ["Dishes"], "https://n", "https://chores.jade.rip/"
+        )
+    )
+    headers = fake_http.calls[0]["headers"]
+    # The whole notification opens the member's checklist (name, not lowercased topic).
+    assert headers["Click"] == "https://chores.jade.rip/checklist/Jade"
+
+
+def test_send_notification_no_click_when_no_dashboard(fake_http):
+    asyncio.run(notifier.send_notification(Member(name="Jade"), "Kitchen", ["Dishes"], "https://n"))
+    assert "Click" not in fake_http.calls[0]["headers"]
+
+
 def test_send_notification_strips_trailing_slash_on_base(fake_http):
     asyncio.run(
         notifier.send_notification(Member(name="Bob"), "Bath", ["Toilet"], "https://ntfy.example.com/")
@@ -113,6 +129,17 @@ def test_notify_today_sends_to_each_assigned_member(fake_http):
     # Each member got exactly one notification at base/<name>.
     urls = sorted(c["url"] for c in fake_http.calls)
     assert urls == ["https://ntfy.example.com/alice", "https://ntfy.example.com/bob"]
+
+
+def test_notify_today_passes_dashboard_link(fake_http):
+    cfg = _config_today()
+    cfg = cfg.model_copy(update={"dashboard_url": "https://chores.jade.rip"})
+    asyncio.run(notifier.notify_today(cfg))
+    clicks = sorted(c["headers"]["Click"] for c in fake_http.calls)
+    assert clicks == [
+        "https://chores.jade.rip/checklist/Alice",
+        "https://chores.jade.rip/checklist/Bob",
+    ]
 
 
 def test_notify_today_no_members_or_rooms_returns_empty(fake_http):

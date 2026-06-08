@@ -22,9 +22,28 @@ def test_member_has_no_ntfy_field():
 def test_appconfig_defaults():
     cfg = AppConfig(start_date=date(2026, 1, 1))
     assert cfg.ntfy_base_url == "https://ntfy.sh"
-    assert cfg.notify_time == "08:00"
+    assert cfg.notify_times == ["08:00"]
     assert cfg.members == []
     assert cfg.rooms == []
+
+
+def test_notify_times_normalized_sorted_deduped():
+    cfg = AppConfig(start_date=date(2026, 1, 1), notify_times=["17:00", "8:00", "10:00", "08:00"])
+    # zero-padded, de-duplicated, and sorted chronologically
+    assert cfg.notify_times == ["08:00", "10:00", "17:00"]
+
+
+def test_legacy_notify_time_migrates_to_list():
+    cfg = AppConfig.model_validate({"start_date": "2026-01-01", "notify_time": "09:15"})
+    assert cfg.notify_times == ["09:15"]
+
+
+def test_invalid_notify_time_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(start_date=date(2026, 1, 1), notify_times=["25:00"])
+    with pytest.raises(ValueError):
+        AppConfig(start_date=date(2026, 1, 1), notify_times=["notatime"])
 
 
 def test_timezone_defaults_to_denver():
@@ -66,7 +85,7 @@ def test_save_then_load_round_trips(tmp_path: Path):
     cfg = AppConfig(
         start_date=date(2026, 1, 1),
         ntfy_base_url="https://ntfy.example.com/",
-        notify_time="07:30",
+        notify_times=["07:30"],
         members=[Member(name="Alice"), Member(name="Bob")],
         rooms=[Room(name="Kitchen", tasks=["Dishes"])],
     )

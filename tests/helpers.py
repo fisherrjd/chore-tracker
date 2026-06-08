@@ -34,7 +34,7 @@ def default_config(start: date | None = None) -> dict:
     return {
         "start_date": (start or today).isoformat(),
         "ntfy_base_url": "https://ntfy.example.com",
-        "notify_time": "08:00",
+        "notify_times": ["08:00"],
         "members": [{"name": "Alice"}, {"name": "Bob"}],
         "rooms": [
             {"name": "Kitchen", "tasks": ["Dishes", "Sweep"]},

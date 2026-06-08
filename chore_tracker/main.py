@@ -8,9 +8,10 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 
 from .checks import get_done, set_done
-from .config import AppConfig, Member, Room, load_config, save_config
+from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
 from .logging_config import configure_logging
 from .notifier import notify_today
 from .scheduler import get_assignment, get_day_index, get_schedule
@@ -32,18 +33,19 @@ async def _daily_notify() -> None:
 
 def _reschedule(config: AppConfig) -> None:
     scheduler.remove_all_jobs()
-    h, m = map(int, config.notify_time.split(":"))
-    job = scheduler.add_job(
-        _daily_notify,
-        "cron",
-        hour=h,
-        minute=m,
-        timezone=config.tzinfo,
-        id="daily_notify",
-    )
+    for t in config.notify_times:
+        h, m = map(int, t.split(":"))
+        scheduler.add_job(
+            _daily_notify,
+            "cron",
+            hour=h,
+            minute=m,
+            timezone=config.tzinfo,
+            id=f"daily_notify_{h:02d}{m:02d}",
+        )
     log.info(
-        "scheduler.job_scheduled",
-        extra={"id": job.id, "time": config.notify_time, "timezone": config.timezone},
+        "scheduler.jobs_scheduled",
+        extra={"times": ",".join(config.notify_times) or "(none)", "timezone": config.timezone},
     )
 
 
@@ -88,7 +90,7 @@ async def home(request: Request, msg: str = "", kind: str = "success"):
             "schedule": schedule,
             "today_idx": today_idx,
             "half_cycle": half_cycle,
-            "notify_time": config.notify_time,
+            "notify_times": config.notify_times,
             "room_map": room_map,
             "msg": msg,
             "kind": kind,
@@ -188,6 +190,55 @@ async def delete_member(name: str = Form(...)):
     save_config(config, CONFIG_PATH)
     log.info("member.deleted", extra={"member": name})
     return redirect("/members", f"Removed '{name}'")
+
+
+# ── Settings (notification times) ─────────────────────────────────────────────
+
+@app.get("/settings")
+async def settings_page(request: Request, msg: str = "", kind: str = "success"):
+    config = load_config(CONFIG_PATH)
+    return templates.TemplateResponse(
+        request=request, name="settings.html",
+        context={
+            "notify_times": config.notify_times,
+            "timezone": config.timezone,
+            "msg": msg,
+            "kind": kind,
+        },
+    )
+
+
+def _save_notify_times(config: AppConfig, times: list[str]) -> AppConfig | None:
+    """Re-validate the whole config with new times (normalizes + dedupes).
+
+    Returns the saved config, or None if the times are invalid."""
+    try:
+        updated = AppConfig.model_validate({**config_to_dict(config), "notify_times": times})
+    except ValidationError:
+        return None
+    save_config(updated, CONFIG_PATH)
+    _reschedule(updated)
+    return updated
+
+
+@app.post("/settings/notify-times")
+async def add_notify_time(time: str = Form(...)):
+    config = load_config(CONFIG_PATH)
+    time = time.strip()
+    updated = _save_notify_times(config, config.notify_times + [time])
+    if updated is None:
+        return redirect("/settings", f"Invalid time '{time}' — use HH:MM", "warning")
+    log.info("notify_time.added", extra={"time": time})
+    return redirect("/settings", f"Added notification at {time}")
+
+
+@app.post("/settings/notify-times/delete")
+async def delete_notify_time(time: str = Form(...)):
+    config = load_config(CONFIG_PATH)
+    remaining = [t for t in config.notify_times if t != time]
+    _save_notify_times(config, remaining)
+    log.info("notify_time.deleted", extra={"time": time})
+    return redirect("/settings", f"Removed notification at {time}")
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────

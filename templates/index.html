@@ -37,7 +37,7 @@
 {# ── Upcoming ── #}
 <div class="schedule-header">
   <h3>Coming up</h3>
-  <span class="muted">All rooms covered every {{ half_cycle }} day{{ 's' if half_cycle != 1 }} · notifications at {{ notify_time }}</span>
+  <span class="muted">All rooms covered every {{ half_cycle }} day{{ 's' if half_cycle != 1 }} · notifications at <a href="/settings">{{ notify_times | join(", ") if notify_times else "off" }}</a></span>
 </div>
 
 <table class="schedule-table">

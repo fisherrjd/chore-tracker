@@ -19,9 +19,17 @@ def test_daily_job_func_is_a_coroutine():
 
 
 def test_reschedule_registers_job_in_configured_timezone():
-    cfg = AppConfig(start_date=date(2026, 1, 1), notify_time="08:00", timezone="America/Denver")
+    cfg = AppConfig(start_date=date(2026, 1, 1), notify_times=["08:00"], timezone="America/Denver")
     _reschedule(cfg)
-    job = scheduler.get_job("daily_notify")
-    assert job is not None
+    jobs = scheduler.get_jobs()
+    assert len(jobs) == 1
+    job = jobs[0]
     assert iscoroutinefunction(job.func)
     assert "America/Denver" in str(job.trigger.timezone)
+
+
+def test_reschedule_registers_one_job_per_time():
+    cfg = AppConfig(start_date=date(2026, 1, 1), notify_times=["08:00", "10:00", "17:00"])
+    _reschedule(cfg)
+    ids = sorted(job.id for job in scheduler.get_jobs())
+    assert ids == ["daily_notify_0800", "daily_notify_1000", "daily_notify_1700"]
