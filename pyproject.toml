@@ -1,6 +1,6 @@
 [project]
 name = "chore-tracker"
-version = "0.3.2"
+version = "0.3.4"
 description = "Household chore tracker with room rotation and ntfy notifications"
 readme = "README.md"
 requires-python = ">=3.13"

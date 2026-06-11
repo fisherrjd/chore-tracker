@@ -13,15 +13,14 @@ The ops repo **builds nothing** — it only points at an already-published tag. 
 
 ## What the pipeline publishes
 
-The workflow triggers on every branch push and on `v*` tag pushes. `docker/metadata-action` derives the image tags:
+The version is read from `version` in `pyproject.toml` — the single source of truth. The workflow triggers on every branch push:
 
-| You push… | Image tag(s) produced | Use for |
-|-----------|-----------------------|---------|
-| commit to `main` | `:main-latest` (rolling) + `:main-<sha>` (immutable) | latest dev / staging |
-| any other branch `X` | `:X-b<sha>` (slashes slugified, e.g. `feat-foo-b1a2b3c`) | testing a feature branch on the cluster |
-| git tag `vX.Y.Z` | `:X.Y.Z` (immutable) + `:X.Y` (moving minor pointer) | **releases — pin these in ops** |
+| You push… | Image tag produced | Use for |
+|-----------|--------------------|---------|
+| merge to `main` | `:X.Y.Z` (immutable) | **releases — pin this in ops** |
+| any other branch | `:X.Y.Z-b<short-sha>` (e.g. `0.3.5-b1a2b3c`) | testing a build on the cluster before release |
 
-Always pin an **immutable** tag in ops (`:0.3.0` or `:main-<sha>`), never a moving one (`:0.3`, `:main-latest`), so a redeploy is reproducible.
+On a `main` build CI also tags the merge commit `vX.Y.Z` in git, then bumps the patch in `pyproject.toml` and commits it back (`[skip ci]`), so `main` always sits on the next unreleased version. Every tag is immutable — nothing moves — so any pin in ops is reproducible by construction.
 
 ---
 
@@ -29,34 +28,26 @@ Always pin an **immutable** tag in ops (`:0.3.0` or `:main-<sha>`), never a movi
 
 Versions are `MAJOR.MINOR.PATCH`:
 
-- **PATCH** (`0.2.0 → 0.2.1`) — backward-compatible **bug fixes only**.
-- **MINOR** (`0.2.0 → 0.3.0`) — new backward-compatible **features**.
-- **MAJOR** (`0.x → 1.0.0`) — breaking changes.
+- **PATCH** (`0.2.0 → 0.2.1`) — backward-compatible **bug fixes only**. Automatic: every merge to `main` ships the current version and bumps the patch.
+- **MINOR** (`0.2.0 → 0.3.0`) — new backward-compatible **features**. Set `version` in `pyproject.toml` in the PR (e.g. `0.3.9 → 0.4.0`); CI ships it, then auto-bumps to `0.4.1`.
+- **MAJOR** (`0.x → 1.0.0`) — breaking changes. Same as minor: edit `version` in the PR.
 
 We're in `0.x`, where the API is considered unstable, but we still follow the minor-for-features / patch-for-fixes convention.
 
-**Rule: never move or reuse a published tag.** Once `vX.Y.Z` is pushed and CI has built `:X.Y.Z`, that version is frozen. If you tagged a commit too early, bump to the next version rather than force-moving the tag — two images sharing one version number causes deploys you can't reason about.
-
-**Don't name a branch the same as a tag.** `git push origin v0.2.0` becomes ambiguous when both `refs/heads/v0.2.0` and `refs/tags/v0.2.0` exist ("src refspec matches more than one"). Branches are working/throwaway; tags are the permanent artifacts. Disambiguate with `git push origin tag v0.2.0` or `git push origin refs/tags/v0.2.0` if you ever must.
+**Reusing a version is blocked, not just discouraged.** Once `:X.Y.Z` is published it's frozen, and a `main` build whose `pyproject.toml` version already exists in GHCR **fails the guard step** instead of overwriting it. If that fires, bump `version` and re-merge.
 
 ---
 
 ## Cut a release
 
-```bash
-# 1. Land the work on main (PR or merge), then:
-git checkout main && git pull
+Releases happen on merge to `main` — there is no manual `git tag` step.
 
-# 2. Tag the main tip with the new version
-git tag v0.3.0
+1. **Patch release:** just land your work on `main` (PR or merge). Nothing else — `main` already holds the version about to ship.
+2. **Minor/major release:** in your PR, bump `version` in `pyproject.toml` (e.g. `0.3.9 → 0.4.0`), then merge.
 
-# 3. Push ONLY the tag (the 'tag' keyword keeps it unambiguous)
-git push origin tag v0.3.0
-```
+On merge, CI publishes `:X.Y.Z`, tags `vX.Y.Z` in git, and bumps the patch on `main` for next time.
 
-This fires the workflow on the tag ref and publishes `:0.3.0` and `:0.3`.
-
-**Verify** before deploying: check the Actions run is green and the tag exists on the GHCR package page (`https://github.com/fisherrjd/chore-tracker/pkgs/container/chore-tracker`).
+**Verify** before deploying: check the Actions run is green and the tag exists on the GHCR package page (`https://github.com/fisherrjd/chore-tracker/pkgs/container/chore-tracker`). The version you just shipped is the one that *was* in `pyproject.toml` before the auto-bump — see the `chore: release vX.Y.Z` commit on `main`.
 
 ---
 
@@ -65,17 +56,17 @@ This fires the workflow on the tag ref and publishes `:0.3.0` and `:0.3`.
 In **`fisherrjd/ops`**, edit `svc/chore-tracker.nix`:
 
 ```nix
-, image ? "ghcr.io/fisherrjd/chore-tracker:0.3.0"
+, image ? "ghcr.io/fisherrjd/chore-tracker:0.3.4"
 ```
 
-Commit ops, then apply your hex/k8s manifests. The deployment pulls the new image (ensure the image actually changed tag — k8s won't re-pull an identical tag without `imagePullPolicy: Always` + a rollout restart).
+Then, from the ops repo, preview with `hex --dryrun -t specs.nix` and apply with `hex`. The deployment pulls the new image (ensure the image actually changed tag — k8s won't re-pull an identical tag without `imagePullPolicy: Always` + a rollout restart).
 
 ---
 
 ## Test a feature branch on the cluster (no release)
 
-1. Push the branch — CI builds `:<branch>-b<sha>`.
-2. Temporarily point `svc/chore-tracker.nix` at that tag and apply.
+1. Push the branch — CI builds `:X.Y.Z-b<short-sha>` (the in-development version with the commit appended).
+2. Temporarily point `svc/chore-tracker.nix` at that tag and apply with `hex`.
 3. When done, revert ops to the pinned release tag.
 
 > Note: every branch push builds an image, so `*-b<sha>` images accumulate in GHCR. Set a retention/cleanup policy on the package, or narrow the `branches:` filter in the workflow if it gets noisy.
