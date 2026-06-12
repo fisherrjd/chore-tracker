@@ -38,3 +38,8 @@ venv.bak/
 
 
 OPS.md
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

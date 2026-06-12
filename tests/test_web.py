@@ -1,120 +1,203 @@
-"""End-to-end HTTP behavior for every route, via TestClient."""
+"""End-to-end HTTP behavior for every /api/* route, via TestClient."""
 import yaml
 
 from chore_tracker.config import load_config
 from tests.helpers import config_path, default_config, write_config
 
 
-# ── Schedule / home ───────────────────────────────────────────────────────────
+# ── /api/home ─────────────────────────────────────────────────────────────────
 
-def test_home_renders_today_and_links_to_checklist(client):
-    r = client.get("/")
+def test_api_home_returns_schedule_and_progress(client):
+    r = client.get("/api/home")
     assert r.status_code == 200
-    assert "Alice" in r.text and "Bob" in r.text
-    assert "/checklist/Alice" in r.text  # names link to their checklist
+    data = r.json()
+    assert isinstance(data["schedule"], list) and len(data["schedule"]) == 14
+    assert "today_idx" in data and "half_cycle" in data
+    assert "notify_times" in data and "done_map" in data
+    assert set(data["done_map"]) == {"Alice", "Bob"}
 
 
-def test_home_empty_state_when_unconfigured(client):
+def test_api_home_empty_state(client):
     write_config({"start_date": "2026-01-01", "members": [], "rooms": []})
-    r = client.get("/")
+    r = client.get("/api/home")
     assert r.status_code == 200
-    assert "No rooms or members set up yet." in r.text
+    data = r.json()
+    assert data["done_map"] == {}
+    assert data["half_cycle"] == 0
 
 
-# ── Rooms ─────────────────────────────────────────────────────────────────────
+# ── /api/rooms ────────────────────────────────────────────────────────────────
 
-def test_add_room_persists(client):
-    r = client.post("/rooms", data={"name": "Garage"}, follow_redirects=False)
-    assert r.status_code == 303
+def test_api_rooms_list(client):
+    r = client.get("/api/rooms")
+    assert r.status_code == 200
+    rooms = r.json()
+    assert isinstance(rooms, list)
+    names = [room["name"] for room in rooms]
+    assert "Kitchen" in names and "Bath" in names
+
+
+def test_api_add_room_persists(client):
+    r = client.post("/api/rooms", json={"name": "Garage"})
+    assert r.status_code == 201
+    assert r.json()["name"] == "Garage"
     assert any(room.name == "Garage" for room in load_config(config_path()).rooms)
 
 
-def test_add_duplicate_room_is_rejected(client):
-    r = client.post("/rooms", data={"name": "Kitchen"}, follow_redirects=True)
-    assert r.status_code == 200
+def test_api_add_room_duplicate_returns_409(client):
+    r = client.post("/api/rooms", json={"name": "Kitchen"})
+    assert r.status_code == 409
     names = [room.name for room in load_config(config_path()).rooms]
     assert names.count("Kitchen") == 1
 
 
-def test_add_and_delete_task(client):
-    r = client.post("/rooms/Kitchen/tasks", data={"task": "Mop"}, follow_redirects=False)
-    # Redirect to a clean /rooms?msg=... — no '#anchor' that would swallow the
-    # query string (scroll position is restored client-side instead).
-    loc = r.headers["location"]
-    assert loc.startswith("/rooms?") and "#" not in loc
+def test_api_add_room_empty_name_returns_409(client):
+    r = client.post("/api/rooms", json={"name": "   "})
+    assert r.status_code == 409
+
+
+def test_api_delete_room(client):
+    r = client.delete("/api/rooms/Den")
+    assert r.status_code == 200
+    assert not any(room.name == "Den" for room in load_config(config_path()).rooms)
+
+
+def test_api_delete_room_not_found_returns_404(client):
+    r = client.delete("/api/rooms/Nonexistent")
+    assert r.status_code == 404
+
+
+# ── /api/rooms/{room}/tasks ───────────────────────────────────────────────────
+
+def test_api_add_task_persists(client):
+    r = client.post("/api/rooms/Kitchen/tasks", json={"task": "Mop"})
+    assert r.status_code == 201
+    assert r.json()["task"] == "Mop"
     rooms = {r.name: r for r in load_config(config_path()).rooms}
     assert "Mop" in rooms["Kitchen"].tasks
 
-    client.post("/rooms/Kitchen/tasks/delete", data={"task": "Mop"})
+
+def test_api_add_task_duplicate_returns_409(client):
+    r = client.post("/api/rooms/Kitchen/tasks", json={"task": "Dishes"})
+    assert r.status_code == 409
+
+
+def test_api_add_task_unknown_room_returns_404(client):
+    r = client.post("/api/rooms/Nonexistent/tasks", json={"task": "Mop"})
+    assert r.status_code == 404
+
+
+def test_api_delete_task(client):
+    r = client.delete("/api/rooms/Kitchen/tasks/Dishes")
+    assert r.status_code == 200
     rooms = {r.name: r for r in load_config(config_path()).rooms}
-    assert "Mop" not in rooms["Kitchen"].tasks
+    assert "Dishes" not in rooms["Kitchen"].tasks
 
 
-def test_delete_room(client):
-    client.post("/rooms/delete", data={"name": "Den"})
-    assert not any(r.name == "Den" for r in load_config(config_path()).rooms)
+# ── /api/members ──────────────────────────────────────────────────────────────
+
+def test_api_members_list(client):
+    r = client.get("/api/members")
+    assert r.status_code == 200
+    data = r.json()
+    assert "members" in data and "ntfy_base_url" in data
+    names = [m["name"] for m in data["members"]]
+    assert "Alice" in names and "Bob" in names
+    alice = next(m for m in data["members"] if m["name"] == "Alice")
+    assert alice["ntfy_url"] == "https://ntfy.example.com/alice"
+    assert alice["topic"] == "alice"
 
 
-# ── Members ───────────────────────────────────────────────────────────────────
-
-def test_add_member_name_only(client):
-    r = client.post("/members", data={"name": "Carol"}, follow_redirects=False)
-    assert r.status_code == 303
-    members = load_config(config_path()).members
-    assert any(m.name == "Carol" for m in members)
-    # Persisted YAML carries only the name — no ntfy field.
+def test_api_add_member_persists(client):
+    r = client.post("/api/members", json={"name": "Carol"})
+    assert r.status_code == 201
+    assert r.json()["name"] == "Carol"
+    assert any(m.name == "Carol" for m in load_config(config_path()).members)
+    # Persisted YAML carries only the name — no extra fields.
     raw = yaml.safe_load(config_path().read_text())
     carol = next(m for m in raw["members"] if m["name"] == "Carol")
     assert carol == {"name": "Carol"}
 
 
-def test_add_duplicate_member_rejected(client):
-    client.post("/members", data={"name": "Alice"})
-    names = [m.name for m in load_config(config_path()).members]
-    assert names.count("Alice") == 1
+def test_api_add_member_duplicate_returns_409(client):
+    r = client.post("/api/members", json={"name": "Alice"})
+    assert r.status_code == 409
 
 
-def test_delete_member(client):
-    client.post("/members/delete", data={"name": "Bob"})
+def test_api_delete_member(client):
+    r = client.delete("/api/members/Bob")
+    assert r.status_code == 200
     assert not any(m.name == "Bob" for m in load_config(config_path()).members)
 
 
-def test_members_page_uses_config_base_url(client):
-    r = client.get("/members")
+def test_api_delete_member_not_found_returns_404(client):
+    r = client.delete("/api/members/Nobody")
+    assert r.status_code == 404
+
+
+# ── /api/settings ─────────────────────────────────────────────────────────────
+
+def test_api_settings(client):
+    r = client.get("/api/settings")
     assert r.status_code == 200
-    # Derived from ntfy_base_url + lowercased name; no per-member topic input.
-    assert "https://ntfy.example.com/alice" in r.text
-    assert 'name="ntfy"' not in r.text
+    data = r.json()
+    assert "notify_times" in data and "timezone" in data
+    assert "08:00" in data["notify_times"]
 
 
-# ── Checklist ─────────────────────────────────────────────────────────────────
+def test_api_add_notify_time_persists_and_sorts(client):
+    write_config({**default_config(), "notify_times": ["08:00"]})
+    r = client.post("/api/settings/notify-times", json={"time": "17:00"})
+    assert r.status_code == 201
+    client.post("/api/settings/notify-times", json={"time": "10:00"})
+    assert load_config(config_path()).notify_times == ["08:00", "10:00", "17:00"]
 
-def test_checklist_shows_todays_tasks_with_checkboxes(client):
-    # Today (day 0): Alice -> Kitchen (Dishes, Sweep).
-    r = client.get("/checklist/Alice")
+
+def test_api_add_invalid_notify_time_returns_400(client):
+    r = client.post("/api/settings/notify-times", json={"time": "99:99"})
+    assert r.status_code == 400
+    assert load_config(config_path()).notify_times == ["08:00"]
+
+
+def test_api_delete_notify_time(client):
+    write_config({**default_config(), "notify_times": ["08:00", "17:00"]})
+    r = client.delete("/api/settings/notify-times/08:00")
     assert r.status_code == 200
-    assert 'type="checkbox"' in r.text
-    assert 'value="Dishes"' in r.text and 'value="Sweep"' in r.text
+    assert load_config(config_path()).notify_times == ["17:00"]
 
 
-def test_checklist_unknown_member_redirects_home(client):
-    r = client.get("/checklist/Nobody", follow_redirects=False)
-    assert r.status_code == 303
-    assert r.headers["location"].startswith("/?")
-    assert "Unknown+member" in r.headers["location"].replace("%20", "+")
+# ── /api/checklist ────────────────────────────────────────────────────────────
+
+def test_api_checklist_get_shows_todays_tasks(client):
+    # Day 0: Alice → Kitchen (Dishes, Sweep).
+    r = client.get("/api/checklist/Alice")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["member"] == "Alice"
+    assert data["room_name"] == "Kitchen"
+    assert set(data["tasks"]) == {"Dishes", "Sweep"}
+    assert data["done"] == []
 
 
-def test_checklist_toggle_persists_and_is_shared(client):
-    client.post("/checklist/Alice", data={"tasks": ["Dishes"]}, follow_redirects=False)
-    # A second, independent request sees the same checked state (shared store).
-    r = client.get("/checklist/Alice")
-    assert "checked" in r.text
-    # The checked task renders with the done styling hook.
-    assert "is-done" in r.text
+def test_api_checklist_unknown_member_returns_404(client):
+    r = client.get("/api/checklist/Nobody")
+    assert r.status_code == 404
 
 
-def test_checklist_only_records_valid_tasks(client):
-    client.post("/checklist/Alice", data={"tasks": ["Dishes", "NotARealTask"]})
+def test_api_checklist_post_persists(client):
+    r = client.post("/api/checklist/Alice", json={"tasks": ["Dishes"]})
+    assert r.status_code == 200
+    assert "Dishes" in r.json()["done"]
+
+
+def test_api_checklist_toggle_visible_on_get(client):
+    client.post("/api/checklist/Alice", json={"tasks": ["Dishes"]})
+    r = client.get("/api/checklist/Alice")
+    assert "Dishes" in r.json()["done"]
+
+
+def test_api_checklist_only_records_valid_tasks(client):
+    client.post("/api/checklist/Alice", json={"tasks": ["Dishes", "NotARealTask"]})
     from chore_tracker import checks
     from chore_tracker.scheduler import get_day_index
 
@@ -123,9 +206,9 @@ def test_checklist_only_records_valid_tasks(client):
     assert checks.get_done(idx, "Alice") == {"Dishes"}
 
 
-def test_checklist_empty_submit_clears(client):
-    client.post("/checklist/Alice", data={"tasks": ["Dishes"]})
-    client.post("/checklist/Alice", data={})  # nothing checked
+def test_api_checklist_empty_submit_clears(client):
+    client.post("/api/checklist/Alice", json={"tasks": ["Dishes"]})
+    client.post("/api/checklist/Alice", json={"tasks": []})
     from chore_tracker import checks
     from chore_tracker.scheduler import get_day_index
 
@@ -134,66 +217,36 @@ def test_checklist_empty_submit_clears(client):
     assert checks.get_done(idx, "Alice") == set()
 
 
-def test_checklist_post_unknown_member_redirects_home(client):
-    r = client.post("/checklist/Nobody", data={"tasks": ["x"]}, follow_redirects=False)
-    assert r.status_code == 303
-    assert r.headers["location"].startswith("/?")
+def test_api_checklist_post_unknown_member_returns_404(client):
+    r = client.post("/api/checklist/Nobody", json={"tasks": []})
+    assert r.status_code == 404
 
 
-# ── Notifications ─────────────────────────────────────────────────────────────
+# ── /api/notify/today ─────────────────────────────────────────────────────────
 
-def test_notify_today_reports_sent_and_failed(client, monkeypatch):
-    async def fake_notify(config):
+def test_api_notify_today_returns_sent_and_failed(client, monkeypatch):
+    async def fake_notify(config, **kwargs):
         return {"Alice": True, "Bob": False}
 
     monkeypatch.setattr("chore_tracker.main.notify_today", fake_notify)
-    r = client.post("/notify/today", follow_redirects=False)
-    assert r.status_code == 303
-    loc = r.headers["location"]
-    assert "Alice" in loc and "Bob" in loc
-    assert "kind=warning" in loc  # a failure flips the flash to warning
+    r = client.post("/api/notify/today")
+    assert r.status_code == 200
+    data = r.json()
+    assert "Alice" in data["sent"]
+    assert "Bob" in data["failed"]
 
 
-def test_notify_today_no_assignments_warns(client, monkeypatch):
-    async def fake_notify(config):
+def test_api_notify_today_no_assignments(client, monkeypatch):
+    async def fake_notify(config, **kwargs):
         return {}
 
     monkeypatch.setattr("chore_tracker.main.notify_today", fake_notify)
-    r = client.post("/notify/today", follow_redirects=False)
-    assert "No+assignments" in r.headers["location"].replace("%20", "+")
-    assert "kind=warning" in r.headers["location"]
-
-
-# ── Settings: notification times ──────────────────────────────────────────────
-
-def test_settings_page_lists_notify_times(client):
-    write_config({**default_config(), "notify_times": ["08:00", "17:00"]})
-    r = client.get("/settings")
+    r = client.post("/api/notify/today")
     assert r.status_code == 200
-    assert "08:00" in r.text and "17:00" in r.text
+    assert r.json() == {"sent": [], "failed": []}
 
 
-def test_add_notify_time_persists_and_sorts(client):
-    write_config({**default_config(), "notify_times": ["08:00"]})
-    client.post("/settings/notify-times", data={"time": "17:00"})
-    client.post("/settings/notify-times", data={"time": "10:00"})
-    assert load_config(config_path()).notify_times == ["08:00", "10:00", "17:00"]
-
-
-def test_add_invalid_notify_time_warns_and_keeps_existing(client):
-    write_config({**default_config(), "notify_times": ["08:00"]})
-    r = client.post("/settings/notify-times", data={"time": "99:99"}, follow_redirects=False)
-    assert "kind=warning" in r.headers["location"]
-    assert load_config(config_path()).notify_times == ["08:00"]
-
-
-def test_delete_notify_time(client):
-    write_config({**default_config(), "notify_times": ["08:00", "17:00"]})
-    client.post("/settings/notify-times/delete", data={"time": "08:00"})
-    assert load_config(config_path()).notify_times == ["17:00"]
-
-
-# ── JSON API ──────────────────────────────────────────────────────────────────
+# ── /api/schedule ─────────────────────────────────────────────────────────────
 
 def test_api_schedule_returns_json(client):
     r = client.get("/api/schedule")
@@ -204,14 +257,15 @@ def test_api_schedule_returns_json(client):
     assert set(data[0]["assignments"]) == {"Alice", "Bob"}
 
 
-# ── Static assets / cache-busting ─────────────────────────────────────────────
+# ── SPA catch-all ─────────────────────────────────────────────────────────────
 
-def test_stylesheet_is_cache_busted(client):
+def test_spa_fallback_returns_404_when_dist_missing(client):
+    # In test env, frontend/dist doesn't exist, so the catch-all 404s gracefully.
     r = client.get("/")
-    assert "/static/style.css?v=" in r.text
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Frontend not built"
 
 
-def test_checklist_css_is_served(client):
-    r = client.get("/static/style.css")
-    assert r.status_code == 200
-    assert ".checklist" in r.text
+def test_spa_fallback_on_spa_path(client):
+    r = client.get("/checklist/Alice")
+    assert r.status_code == 404  # no build in test env
