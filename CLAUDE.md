@@ -32,7 +32,7 @@ There is no linter/formatter configured in this repo.
 Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/api/*` routes + APScheduler wiring). The supporting modules are deliberately small and single-purpose:
 
 - **`scheduler.py`** — pure rotation math, no I/O. `get_assignment(day_index, rooms, people)` is the core: a round-robin that requires `len(rooms) % len(people) == 0`. Day index is `(today - start_date).days`.
-- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`.
+- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`. `dashboard_url` is used by `notifier.py` for the `Click` deep-link header.
 - **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`.
 - **`checks.py`** — in-memory, process-local checklist state keyed by day_index. Intentionally **not** persisted.
 - **`logging_config.py`** — logfmt formatter to stdout. App code emits structured events via `log.info("event.name", extra={...})`.
@@ -106,6 +106,8 @@ Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replic
 - **Path resolution:** `CHORE_BASE` and `CHORE_CONFIG` are read at *import time* in `main.py`. Tests set both in `tests/conftest.py` before importing the app.
 - **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)` without a `with` block so the scheduler never starts during tests.
 - **SPA in tests:** `frontend/dist/` doesn't exist in tests; the catch-all returns 404 gracefully. All tests use `/api/*` routes.
+- **Test helpers (`tests/helpers.py`):** `default_config()` seeds a known-good config (2 members: Alice/Bob, 4 rooms, `America/Denver` timezone, today as `start_date` so `day_index = 0`). `write_config()` writes a raw dict to the temp config file. Both are called by the `autouse` `fresh_state` fixture — every test starts from this baseline.
+- **`goals/`** — planning/design markdown files, not code.
 - **Config back-compat:** `AppConfig` migrates the legacy single `notify_time` string to `notify_times`.
 - **Python 3.13** required (`requires-python`).
 
