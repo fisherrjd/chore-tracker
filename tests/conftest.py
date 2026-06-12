@@ -1,7 +1,7 @@
 """Shared fixtures.
 
-The app reads ``CHORE_BASE`` (for templates/static) and ``CHORE_CONFIG`` (the
-config file) at *import time*, so both env vars are set before importing
+The app reads ``CHORE_BASE`` (for SPA dist) and ``CHORE_CONFIG`` (the config
+file) at *import time*, so both env vars are set before importing
 ``chore_tracker.main``. Tests run against an isolated temp config file, never
 the real ``config.yaml``.
 """

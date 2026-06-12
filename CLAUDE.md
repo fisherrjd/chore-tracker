@@ -4,100 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-household chore tracker: a FastAPI + Jinja2 server that rotates rooms
-among members on a daily round-robin and pushes [ntfy](https://ntfy.sh)
-notifications with each person's assigned room and task list. Deployed as a
-single-replica container on k8s (see `OPS.md`).
+A single-household chore tracker: a FastAPI JSON API server that rotates rooms among members on a daily round-robin and pushes [ntfy](https://ntfy.sh) notifications. The frontend is a Vue 3 + shadcn-vue SPA served by FastAPI. Deployed as a single-replica container on k8s (see `OPS.md`).
 
 ## Commands
 
-The dev shell is provided by Nix + direnv (`.envrc` → `use nix`), which puts a
-Python with all dependencies on `PATH`. Do **not** invoke `uv` to run, test, or
-boot the app — the Nix-provided environment already has everything.
+The dev shell is provided by Nix + direnv (`.envrc` → `use nix`), which puts Python and Bun on `PATH`. Do **not** invoke `uv` to run, test, or boot the Python app — the Nix-provided environment already has everything.
 
 ```bash
+# Python / backend
 pytest                       # full suite (config in pyproject.toml: -q, testpaths=tests)
 pytest tests/test_web.py     # one file
 pytest tests/test_scheduler.py::test_name   # one test
-python main.py               # run locally on http://0.0.0.0:3030 (reload=True)
+python main.py               # run backend on http://0.0.0.0:3030 (reload=True)
+
+# Frontend (run from repo root or frontend/)
+bun install                  # install / sync deps (from frontend/)
+bun run dev                  # Vite dev server on :5173, proxies /api → :3030
+bun run build                # production build → frontend/dist/
 ```
 
 There is no linter/formatter configured in this repo.
 
 ## Architecture
 
-Request/notification flow centers on `chore_tracker/main.py` (the FastAPI app +
-routes + APScheduler wiring). The supporting modules are deliberately small and
-single-purpose:
+### Backend (`chore_tracker/`)
 
-- **`scheduler.py`** — pure rotation math, no I/O. `get_assignment(day_index,
-  rooms, people)` is the core: a round-robin that requires
-  `len(rooms) % len(people) == 0`. Over `n_rooms` days each person cleans every
-  room once; every `n_rooms // n_people` days ("half cycle") all rooms are
-  covered. Day index is `(today - start_date).days`.
-- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today`
-  and `tzinfo` are computed from the configured `timezone`, **not** the server
-  clock, so "today" tracks the household's wall clock (UTC server, Denver
-  household). `save_config` writes atomically via a `.tmp` + `replace`.
-- **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is
-  `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header
-  deep-links to that member's checklist on `dashboard_url`.
-- **`checks.py`** — in-memory, process-local checklist state keyed by day_index.
-  Intentionally **not** persisted: a restart clears it, and writing any day drops
-  all other days, so completion never lingers past the current day.
-- **`logging_config.py`** — logfmt formatter to stdout. App code emits
-  structured events via `log.info("event.name", extra={...})`; new log lines
-  should follow that `event.name` + `extra=` convention so `kubectl logs` stays
-  parseable.
+Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/api/*` routes + APScheduler wiring). The supporting modules are deliberately small and single-purpose:
+
+- **`scheduler.py`** — pure rotation math, no I/O. `get_assignment(day_index, rooms, people)` is the core: a round-robin that requires `len(rooms) % len(people) == 0`. Day index is `(today - start_date).days`.
+- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`. `dashboard_url` is used by `notifier.py` for the `Click` deep-link header.
+- **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`.
+- **`checks.py`** — in-memory, process-local checklist state keyed by day_index. Intentionally **not** persisted.
+- **`logging_config.py`** — logfmt formatter to stdout. App code emits structured events via `log.info("event.name", extra={...})`.
+
+### Frontend (`frontend/`)
+
+Vue 3 SPA: `<script setup>` + TypeScript, Vite, Tailwind CSS v4, shadcn-vue (Reka UI), vue-router (history mode).
+
+```
+frontend/
+  package.json            bun deps
+  vite.config.ts          Vite + @tailwindcss/vite + /api proxy
+  tsconfig*.json
+  components.json         shadcn-vue config
+  src/
+    main.ts  App.vue
+    router.ts             vue-router, history mode, 5 routes
+    lib/api.ts            typed fetch client (all /api/* calls)
+    lib/utils.ts          cn() helper
+    types.ts              TS types mirroring config.py models
+    assets/index.css      Tailwind + CSS variable theme (neutral)
+    components/ui/        shadcn-vue components (button, card, ...)
+    views/
+      HomeView.vue        today cards + 14-day schedule + notify button
+      RoomsView.vue       rooms + tasks CRUD
+      MembersView.vue     members CRUD + ntfy links
+      SettingsView.vue    notify-times CRUD
+      ChecklistView.vue   /checklist/:member (debounced auto-save)
+```
+
+### JSON API (`/api/*`)
+
+All mutations accept JSON bodies and return JSON. Errors use `{"detail": "..."}` with appropriate HTTP status.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/home` | today's assignments + done_map + 14-day schedule |
+| GET | `/api/schedule` | 14-day schedule |
+| GET/POST | `/api/rooms` | list rooms / add room |
+| DELETE | `/api/rooms/{name}` | remove room |
+| POST | `/api/rooms/{room}/tasks` | add task |
+| DELETE | `/api/rooms/{room}/tasks/{task}` | remove task |
+| GET/POST | `/api/members` | list / add member |
+| DELETE | `/api/members/{name}` | remove member |
+| GET | `/api/settings` | notify_times + timezone |
+| POST | `/api/settings/notify-times` | add notify time |
+| DELETE | `/api/settings/notify-times/{time}` | remove notify time |
+| GET | `/api/checklist/{member}` | today's checklist + done list |
+| POST | `/api/checklist/{member}` | record completed tasks |
+| POST | `/api/notify/today` | fire notifications now |
 
 ### Two state stores, by design
 
-1. **Config (durable)** — rooms, members, notify times. Edited through the web
-   UI, persisted to `config.yaml`. In production this is a mounted file at
-   `/data/config.yaml` (env `CHORE_CONFIG`); the baked-in `config.yaml` is only a
-   default. Every request re-reads config from disk via `load_config`.
+1. **Config (durable)** — rooms, members, notify times. Persisted to `config.yaml`. In production this is a mounted file at `/data/config.yaml` (env `CHORE_CONFIG`).
 2. **Checklist completion (ephemeral)** — `checks._state`, in-process, daily.
+
+### SPA serving
+
+FastAPI serves the built SPA:
+- `/assets/*` → `frontend/dist/assets/` (conditional mount, skipped if absent)
+- `/{full_path:path}` catch-all → `frontend/dist/index.html` (404 gracefully if not built)
+
+Vue Router handles client-side routing for `/`, `/rooms`, `/members`, `/settings`, `/checklist/:member`. The `/checklist/{member}` route is the ntfy notification deep-link target.
 
 ### Scheduling
 
-Notifications fire from an in-process `AsyncIOScheduler`, not a k8s CronJob, so
-they only run while the pod is up. `_reschedule()` rebuilds all cron jobs from
-`notify_times` and is called both on startup and whenever notify times change in
-Settings. This works **only at replicas: 1** — scaling out would duplicate every
-notification, since each replica runs its own scheduler.
+Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replicas: 1**.
 
 ## Conventions & gotchas
 
-- **Path resolution:** `CHORE_BASE` (templates/static root) and `CHORE_CONFIG`
-  are read at *import time* in `main.py`. Tests set both in `tests/conftest.py`
-  before importing the app and point at a throwaway temp config — never the real
-  `config.yaml`.
-- **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)`
-  without a `with` block on purpose, so the background scheduler never starts.
-- **Routes are POST-redirect-GET:** mutations redirect (303) back to the page
-  with `?msg=&kind=` query params for flash messages; the `redirect()` helper in
-  `main.py` builds these.
-- **Config back-compat:** `AppConfig` migrates the legacy single `notify_time`
-  string to `notify_times`, and normalizes/dedupes/sorts times — preserve this
-  when touching the model.
+- **Path resolution:** `CHORE_BASE` and `CHORE_CONFIG` are read at *import time* in `main.py`. Tests set both in `tests/conftest.py` before importing the app.
+- **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)` without a `with` block so the scheduler never starts during tests.
+- **SPA in tests:** `frontend/dist/` is built and present; the catch-all serves `index.html` (200). All API tests use `/api/*` routes explicitly.
+- **Test helpers (`tests/helpers.py`):** `default_config()` seeds a known-good config (2 members: Alice/Bob, 4 rooms, `America/Denver` timezone, today as `start_date` so `day_index = 0`). `write_config()` writes a raw dict to the temp config file. Both are called by the `autouse` `fresh_state` fixture — every test starts from this baseline.
+- **`goals/`** — planning/design markdown files, not code.
+- **Config back-compat:** `AppConfig` migrates the legacy single `notify_time` string to `notify_times`.
 - **Python 3.13** required (`requires-python`).
 
 ## Releases & deploy
 
-Full process is in `OPS.md`. The version lives in `pyproject.toml` (the single
-source of truth) and CI (`.github/workflows/docker-publish.yml`) is
-pyproject-driven, not tag-driven:
+Full process is in `OPS.md`. The version lives in `pyproject.toml` (single source of truth). CI (`.github/workflows/docker-publish.yml`) is pyproject-version-driven. **Merge to `main`** → publishes `ghcr.io/fisherrjd/chore-tracker:X.Y.Z`, tags git, bumps patch. Patch releases are automatic; for minor/major, bump `version` in `pyproject.toml` before merging.
 
-- **Merge to `main`** → publishes `ghcr.io/fisherrjd/chore-tracker:X.Y.Z`
-  (immutable), tags `vX.Y.Z` in git, then bumps the patch in `pyproject.toml` and
-  commits it back (`[skip ci]`). So `main` always sits on the *next* unreleased
-  version, and the just-shipped version is the one in the `chore: release vX.Y.Z`
-  commit.
-- **Push any other branch** → publishes `:X.Y.Z-b<short-sha>` for cluster testing.
-
-Patch releases are automatic on merge; for a minor/major, bump `version` in
-`pyproject.toml` in the PR before merging. A `main` build whose version already
-exists in GHCR **fails a guard step** rather than overwriting it — bump and
-re-merge. Deploy by pinning the immutable `:X.Y.Z` in `fisherrjd/ops`
-(`svc/chore-tracker.nix`) and applying with `hex` (`hex --dryrun -t specs.nix`,
-then `hex`).
+The Dockerfile is multi-stage: Bun builds the SPA to `frontend/dist/`; Python stage copies it in. CMD unchanged.

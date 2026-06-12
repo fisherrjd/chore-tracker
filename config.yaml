@@ -3,7 +3,7 @@ timezone: America/Denver
 ntfy_base_url: https://ntfy.jade.rip
 dashboard_url: https://chores.jade.rip
 notify_times:
-- '08:00'
+- 08:00
 - '10:00'
 - '17:00'
 members:

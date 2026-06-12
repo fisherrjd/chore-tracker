@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+/* Earthy palette: warm off-white paper, brown/tan accents, and a deep
+   forest-green as the hero color. */
+:root {
+  --background: 40 30% 96%;          /* warm off-white / paper */
+  --foreground: 28 22% 16%;          /* dark espresso brown */
+  --card: 42 33% 98%;
+  --card-foreground: 28 22% 16%;
+  --popover: 42 33% 98%;
+  --popover-foreground: 28 22% 16%;
+  --primary: 152 38% 22%;            /* dark forest green */
+  --primary-foreground: 42 33% 97%;  /* cream */
+  --secondary: 34 26% 89%;           /* warm tan */
+  --secondary-foreground: 28 28% 22%;
+  --muted: 36 22% 91%;               /* soft beige */
+  --muted-foreground: 28 14% 42%;    /* warm brown-grey */
+  --accent: 32 30% 86%;              /* clay/tan accent */
+  --accent-foreground: 28 30% 22%;
+  --destructive: 14 58% 46%;         /* terracotta */
+  --destructive-foreground: 42 33% 97%;
+  --border: 34 20% 82%;              /* warm taupe */
+  --input: 34 20% 82%;
+  --ring: 152 40% 30%;
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
