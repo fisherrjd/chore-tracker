@@ -259,13 +259,13 @@ def test_api_schedule_returns_json(client):
 
 # ── SPA catch-all ─────────────────────────────────────────────────────────────
 
-def test_spa_fallback_returns_404_when_dist_missing(client):
-    # In test env, frontend/dist doesn't exist, so the catch-all 404s gracefully.
+def test_spa_fallback_serves_index(client):
     r = client.get("/")
-    assert r.status_code == 404
-    assert r.json()["detail"] == "Frontend not built"
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
 
 
 def test_spa_fallback_on_spa_path(client):
     r = client.get("/checklist/Alice")
-    assert r.status_code == 404  # no build in test env
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]

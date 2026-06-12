@@ -105,7 +105,7 @@ Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replic
 
 - **Path resolution:** `CHORE_BASE` and `CHORE_CONFIG` are read at *import time* in `main.py`. Tests set both in `tests/conftest.py` before importing the app.
 - **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)` without a `with` block so the scheduler never starts during tests.
-- **SPA in tests:** `frontend/dist/` doesn't exist in tests; the catch-all returns 404 gracefully. All tests use `/api/*` routes.
+- **SPA in tests:** `frontend/dist/` is built and present; the catch-all serves `index.html` (200). All API tests use `/api/*` routes explicitly.
 - **Test helpers (`tests/helpers.py`):** `default_config()` seeds a known-good config (2 members: Alice/Bob, 4 rooms, `America/Denver` timezone, today as `start_date` so `day_index = 0`). `write_config()` writes a raw dict to the temp config file. Both are called by the `autouse` `fresh_state` fixture — every test starts from this baseline.
 - **`goals/`** — planning/design markdown files, not code.
 - **Config back-compat:** `AppConfig` migrates the legacy single `notify_time` string to `notify_times`.
