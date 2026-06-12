@@ -54,7 +54,7 @@ onMounted(load)
 
   <div v-else class="max-w-md space-y-4">
     <div>
-      <h1 class="text-2xl font-bold tracking-tight">{{ member }}'s Checklist</h1>
+      <h1 class="text-2xl font-bold tracking-tight text-primary">{{ member }}'s Checklist</h1>
       <p class="text-sm text-muted-foreground">
         Today's room:
         <span class="font-medium text-foreground">{{ data.room_name ?? 'None assigned' }}</span>

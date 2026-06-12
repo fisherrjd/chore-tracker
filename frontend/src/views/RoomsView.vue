@@ -77,7 +77,7 @@ onMounted(load)
 
 <template>
   <div class="space-y-6">
-    <h1 class="text-2xl font-bold tracking-tight">Rooms</h1>
+    <h1 class="text-2xl font-bold tracking-tight text-primary">Rooms</h1>
 
     <!-- Add room -->
     <div class="flex gap-2">

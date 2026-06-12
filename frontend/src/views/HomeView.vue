@@ -60,7 +60,7 @@ onMounted(load)
     <!-- Header row -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">Today</h1>
+        <h1 class="text-2xl font-bold tracking-tight text-primary">Today</h1>
         <p class="text-sm text-muted-foreground">
           {{ formatDate(data.schedule[0]?.date ?? '') }}
           <span v-if="data.notify_times.length" class="ml-2">
@@ -75,23 +75,27 @@ onMounted(load)
 
     <!-- Today's assignment cards -->
     <div v-if="data.schedule.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <Card
+      <RouterLink
         v-for="(room, person) in data.schedule[0].assignments"
         :key="person"
+        :to="`/checklist/${person}`"
+        class="rounded-xl transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <CardHeader class="pb-2">
-          <CardTitle class="text-base">{{ person }}</CardTitle>
-          <CardDescription>{{ room }}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div v-if="data.done_map[person]" class="flex items-center gap-2">
-            <Badge variant="secondary">
-              {{ data.done_map[person].done }}/{{ data.done_map[person].total }} done
-            </Badge>
-          </div>
-          <p v-else class="text-sm text-muted-foreground">No tasks</p>
-        </CardContent>
-      </Card>
+        <Card class="h-full">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-base">{{ person }}</CardTitle>
+            <CardDescription>{{ room }}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div v-if="data.done_map[person]" class="flex items-center gap-2">
+              <Badge variant="secondary">
+                {{ data.done_map[person].done }}/{{ data.done_map[person].total }} done
+              </Badge>
+            </div>
+            <p v-else class="text-sm text-muted-foreground">No tasks</p>
+          </CardContent>
+        </Card>
+      </RouterLink>
     </div>
     <p v-else class="text-sm text-muted-foreground">
       No rooms or members set up yet.

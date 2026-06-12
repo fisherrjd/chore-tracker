@@ -53,7 +53,7 @@ onMounted(load)
 
 <template>
   <div class="space-y-6">
-    <h1 class="text-2xl font-bold tracking-tight">Members</h1>
+    <h1 class="text-2xl font-bold tracking-tight text-primary">Members</h1>
 
     <!-- Add member -->
     <div class="flex gap-2">

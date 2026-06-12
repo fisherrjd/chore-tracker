@@ -22,13 +22,13 @@ const currentYear = computed(() => new Date().getFullYear())
 
 <template>
   <div class="min-h-screen bg-background">
-    <header class="border-b border-border bg-card">
+    <header class="bg-primary text-primary-foreground shadow-sm">
       <div class="mx-auto max-w-5xl px-4">
-        <div class="flex h-14 items-center gap-6">
-          <RouterLink to="/" class="text-base font-semibold text-foreground">
+        <div class="flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 py-2">
+          <RouterLink to="/" class="text-base font-semibold text-primary-foreground">
             🧹 Chore Tracker
           </RouterLink>
-          <nav class="flex gap-1">
+          <nav class="flex flex-wrap gap-1">
             <RouterLink
               v-for="link in navLinks"
               :key="link.to"
@@ -36,8 +36,8 @@ const currentYear = computed(() => new Date().getFullYear())
               :class="[
                 'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 isActive(link.to)
-                  ? 'bg-secondary text-secondary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+                  ? 'bg-primary-foreground/15 text-primary-foreground'
+                  : 'text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground',
               ]"
             >
               {{ link.label }}
@@ -51,7 +51,7 @@ const currentYear = computed(() => new Date().getFullYear())
       <RouterView />
     </main>
 
-    <footer class="border-t border-border py-4 text-center text-xs text-muted-foreground">
+    <footer class="border-t-2 border-primary/30 py-4 text-center text-xs text-muted-foreground">
       Chore Tracker &copy; {{ currentYear }}
     </footer>
 
