@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ClipboardCheckIcon, MenuIcon } from '@lucide/vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import ThemePicker from '@/components/ThemePicker.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,9 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Toaster } from '@/components/ui/sonner'
-import { useTheme } from '@/composables/useTheme'
 
-const { theme, mode } = useTheme()
 const route = useRoute()
 
 const links = [
@@ -58,7 +55,6 @@ function isActive(to: string) {
           </RouterLink>
         </nav>
         <div class="ml-auto flex items-center gap-1">
-          <ThemePicker />
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
@@ -94,14 +90,8 @@ function isActive(to: string) {
       </RouterView>
     </main>
     <footer class="border-t">
-      <div
-        class="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 text-xs text-muted-foreground"
-      >
-        <span>chore tracker — built from app-template</span>
-        <span class="inline-flex items-center gap-1.5" title="current theme">
-          <span class="size-1.5 rounded-full bg-primary" />
-          {{ theme }} · {{ mode }}
-        </span>
+      <div class="mx-auto w-full max-w-5xl px-4 py-4 text-xs text-muted-foreground">
+        chore tracker — built from app-template
       </div>
     </footer>
     <Toaster position="bottom-right" />
