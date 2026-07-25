@@ -1,0 +1,47 @@
+/* Grapebox — from the Grapebox Zed theme: plum base, lilac hero, gruvbox cream
+   text and gold focus rings. Dark is the signature look; light is a plum-tinted
+   cream inversion. All values are HSL triplets. */
+
+[data-theme='grapebox'] {
+  --background: 48 50% 95%;          /* gruvbox cream */
+  --foreground: 270 25% 22%;         /* dark plum */
+  --card: 46 60% 97%;
+  --card-foreground: 270 25% 22%;
+  --popover: 46 60% 97%;
+  --popover-foreground: 270 25% 22%;
+  --primary: 270 30% 32%;            /* deep plum */
+  --primary-foreground: 48 50% 96%;
+  --secondary: 270 25% 90%;          /* pale lilac */
+  --secondary-foreground: 270 25% 25%;
+  --muted: 48 30% 90%;
+  --muted-foreground: 270 10% 40%;
+  --accent: 270 30% 88%;
+  --accent-foreground: 270 30% 22%;
+  --destructive: 2 65% 45%;          /* gruvbox-ish red */
+  --destructive-foreground: 48 50% 96%;
+  --border: 270 15% 80%;
+  --input: 270 15% 80%;
+  --ring: 270 30% 40%;
+}
+
+[data-theme='grapebox'].dark {
+  --background: 270 25% 22%;         /* plum (#382a46) */
+  --foreground: 48 87% 88%;          /* gruvbox cream (#fbf1c7) */
+  --card: 270 24% 26%;               /* lighter plum (#433353) */
+  --card-foreground: 48 87% 88%;
+  --popover: 270 24% 26%;
+  --popover-foreground: 48 87% 88%;
+  --primary: 270 45% 71%;            /* lilac (#b594d6) */
+  --primary-foreground: 270 28% 15%;
+  --secondary: 270 23% 31%;          /* raised plum (#4e3c60) */
+  --secondary-foreground: 48 87% 88%;
+  --muted: 270 20% 28%;
+  --muted-foreground: 270 25% 65%;
+  --accent: 270 23% 31%;
+  --accent-foreground: 48 87% 88%;
+  --destructive: 6 78% 57%;          /* gruvbox bright red */
+  --destructive-foreground: 48 50% 96%;
+  --border: 270 23% 36%;             /* #5a4670 */
+  --input: 270 23% 36%;
+  --ring: 42 95% 58%;                /* gold focus ring (#fabd2d) */
+}

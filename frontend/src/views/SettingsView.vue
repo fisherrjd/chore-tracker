@@ -1,113 +1,73 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import PageHeader from '@/components/PageHeader.vue'
+import FormField from '@/components/forms/FormField.vue'
+import SettingsSection from '@/components/forms/SettingsSection.vue'
+import TagInput from '@/components/forms/TagInput.vue'
 import { api, ApiError } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
-const notifyTimes = ref<string[]>([])
+const times = ref<string[]>([])
 const timezone = ref('')
-const newTime = ref('')
-const loading = ref(false)
+
+// the API mutates one time per call, TagInput edits the whole array —
+// diff against the server's copy and replay the changes.
+let server: string[] = []
 
 async function load() {
   try {
     const data = await api.settings()
-    notifyTimes.value = data.notify_times
+    server = data.notify_times
+    times.value = [...server]
     timezone.value = data.timezone
   } catch {
     toast.error('Failed to load settings')
   }
 }
 
-async function addTime() {
-  const time = newTime.value.trim()
-  if (!time) return
-  loading.value = true
+watch(times, async (next) => {
+  const added = next.filter((t) => !server.includes(t))
+  const removed = server.filter((t) => !next.includes(t))
+  if (!added.length && !removed.length) return
   try {
-    const data = await api.addNotifyTime(time)
-    notifyTimes.value = data.notify_times
-    newTime.value = ''
-    toast.success(`Added notification at ${time}`)
+    let latest = server
+    for (const t of added) latest = (await api.addNotifyTime(t)).notify_times
+    for (const t of removed) latest = (await api.deleteNotifyTime(t)).notify_times
+    server = latest
+    // the backend may normalize/sort — mirror its truth if it differs
+    if (JSON.stringify(latest) !== JSON.stringify(next)) times.value = [...latest]
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Failed to add time')
-  } finally {
-    loading.value = false
+    toast.error(e instanceof ApiError ? e.message : 'Failed to update times')
+    times.value = [...server]
   }
-}
-
-async function deleteTime(time: string) {
-  try {
-    const data = await api.deleteNotifyTime(time)
-    notifyTimes.value = data.notify_times
-    toast.success(`Removed notification at ${time}`)
-  } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Failed to remove time')
-  }
-}
+})
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="space-y-6">
-    <h1 class="text-2xl font-bold tracking-tight text-primary">Settings</h1>
+  <div class="mx-auto max-w-2xl space-y-6">
+    <PageHeader title="Settings" description="Notification schedule and timezone." />
 
-    <Card class="max-w-md">
-      <CardHeader>
-        <CardTitle>Notification Times</CardTitle>
-        <CardDescription>
-          Daily notifications fire at these times in {{ timezone }}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <!-- Existing times -->
-        <div v-if="notifyTimes.length" class="flex flex-wrap gap-2">
-          <div
-            v-for="t in notifyTimes"
-            :key="t"
-            class="flex items-center gap-1"
-          >
-            <Badge variant="secondary" class="font-mono">{{ t }}</Badge>
-            <button
-              class="rounded-sm text-muted-foreground hover:text-destructive"
-              @click="deleteTime(t)"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <p v-else class="text-sm text-muted-foreground">No notification times set.</p>
+    <SettingsSection
+      title="Notification times"
+      :description="`Daily notifications fire at these times${timezone ? ` in ${timezone}` : ''}.`"
+    >
+      <FormField
+        v-slot="{ id }"
+        label="Times"
+        hint="Changes save immediately — no button to forget."
+      >
+        <TagInput :id="id" v-model="times" type="time" mono />
+      </FormField>
+    </SettingsSection>
 
-        <!-- Add time -->
-        <div class="flex gap-2">
-          <Input
-            v-model="newTime"
-            type="time"
-            placeholder="HH:MM"
-            class="w-32"
-            @keydown.enter="addTime"
-          />
-          <Button :disabled="loading || !newTime.trim()" @click="addTime">Add</Button>
-        </div>
-      </CardContent>
-    </Card>
-
-    <Card class="max-w-md">
-      <CardHeader>
-        <CardTitle>Timezone</CardTitle>
-        <CardDescription>
-          "Today" is determined by this timezone.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p class="font-mono text-sm">{{ timezone || '—' }}</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          Edit <code>config.yaml</code> to change the timezone.
-        </p>
-      </CardContent>
-    </Card>
+    <SettingsSection title="Timezone" description="&quot;Today&quot; is decided in this timezone.">
+      <p class="font-mono text-sm">{{ timezone || '—' }}</p>
+      <p class="text-xs text-muted-foreground">
+        Edit <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">config.yaml</code> to
+        change it.
+      </p>
+    </SettingsSection>
   </div>
 </template>

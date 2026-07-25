@@ -1,28 +1,39 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { toast } from 'vue-sonner'
+import { ArrowLeftIcon } from '@lucide/vue'
 import { useDebounceFn } from '@vueuse/core'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { toast } from 'vue-sonner'
+import PageHeader from '@/components/PageHeader.vue'
+import Checklist from '@/components/project/Checklist.vue'
+import SaveIndicator from '@/components/project/SaveIndicator.vue'
+import ErrorState from '@/components/states/ErrorState.vue'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import type { ChecklistData } from '@/types'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 
 const route = useRoute()
 const member = route.params.member as string
 
 const data = ref<ChecklistData | null>(null)
-const done = ref<Set<string>>(new Set())
+const done = ref<string[]>([])
 const notFound = ref(false)
+const saveState = ref<'saved' | 'saving' | 'error'>('saved')
+
+// suppress the save watcher while load() seeds `done`
+let seeding = false
 
 async function load() {
   try {
     const result = await api.checklist(member)
     data.value = result
-    done.value = new Set(result.done)
-  } catch (e: unknown) {
+    seeding = true
+    done.value = result.done
+    await nextTick()
+    seeding = false
+  } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound.value = true
     else toast.error('Failed to load checklist')
   }
@@ -30,67 +41,65 @@ async function load() {
 
 const save = useDebounceFn(async () => {
   try {
-    await api.updateChecklist(member, [...done.value])
+    await api.updateChecklist(member, done.value)
+    saveState.value = 'saved'
   } catch {
-    toast.error('Failed to save')
+    saveState.value = 'error'
   }
 }, 400)
 
-function toggle(task: string, checked: boolean) {
-  if (checked) done.value.add(task)
-  else done.value.delete(task)
+watch(done, () => {
+  if (seeding || !data.value) return
+  saveState.value = 'saving'
   void save()
-}
+})
+
+const items = computed(() => (data.value?.tasks ?? []).map((t) => ({ id: t, label: t })))
 
 onMounted(load)
 </script>
 
 <template>
-  <div v-if="notFound" class="text-muted-foreground">
-    Member <strong>{{ member }}</strong> not found.
-  </div>
+  <div class="mx-auto max-w-md space-y-6">
+    <RouterLink
+      to="/"
+      class="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeftIcon class="size-4" />
+      Today
+    </RouterLink>
 
-  <div v-else-if="!data" class="text-muted-foreground">Loading…</div>
+    <ErrorState
+      v-if="notFound"
+      title="Member not found"
+      :description="`Nobody here is called ${member}.`"
+    >
+      <template #action>
+        <Button variant="outline" size="sm" as-child>
+          <RouterLink to="/">Back to Today</RouterLink>
+        </Button>
+      </template>
+    </ErrorState>
 
-  <div v-else class="max-w-md space-y-4">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight text-primary">{{ member }}'s Checklist</h1>
-      <p class="text-sm text-muted-foreground">
-        Today's room:
-        <span class="font-medium text-foreground">{{ data.room_name ?? 'None assigned' }}</span>
-      </p>
+    <div v-else-if="!data" class="space-y-4">
+      <Skeleton class="h-9 w-56" />
+      <Skeleton class="h-48 w-full" />
     </div>
 
-    <div class="flex gap-2">
-      <Badge variant="secondary">
-        {{ done.size }}/{{ data.tasks.length }} done
-      </Badge>
-    </div>
+    <template v-else>
+      <PageHeader
+        :title="`${member}'s checklist`"
+        :description="`Today's room: ${data.room_name ?? 'none assigned'}`"
+      >
+        <template #actions>
+          <SaveIndicator :state="saveState" />
+        </template>
+      </PageHeader>
 
-    <Card>
-      <CardHeader class="pb-3">
-        <CardTitle class="text-base">Tasks</CardTitle>
-        <CardDescription v-if="!data.tasks.length">No tasks for this room.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-3">
-        <div
-          v-for="task in data.tasks"
-          :key="task"
-          class="flex items-center gap-3"
-        >
-          <Checkbox
-            :id="`task-${task}`"
-            :checked="done.has(task)"
-            @update:checked="(v) => toggle(task, v)"
-          />
-          <Label
-            :for="`task-${task}`"
-            :class="['cursor-pointer', done.has(task) ? 'line-through text-muted-foreground' : '']"
-          >
-            {{ task }}
-          </Label>
-        </div>
-      </CardContent>
-    </Card>
+      <Card class="p-5">
+        <Checklist v-if="items.length" v-model:done="done" :items="items" />
+        <p v-else class="text-sm text-muted-foreground">No tasks for this room.</p>
+      </Card>
+    </template>
   </div>
 </template>

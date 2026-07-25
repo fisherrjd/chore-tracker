@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { cn } from '@/lib/utils'
-const props = defineProps<{ class?: string }>()
+import type { HTMLAttributes } from "vue"
+import { cn } from "@/lib/utils"
+
+const props = defineProps<{ class?: HTMLAttributes["class"] }>()
 </script>
+
 <template>
-  <td :class="cn('p-4 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]', props.class)">
+  <td
+    data-slot="table-cell"
+    :class="
+      cn(
+        'p-3 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        props.class,
+      )
+    "
+  >
     <slot />
   </td>
 </template>

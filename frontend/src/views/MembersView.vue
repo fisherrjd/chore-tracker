@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ExternalLinkIcon, PlusIcon } from '@lucide/vue'
+import { onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import PageHeader from '@/components/PageHeader.vue'
+import UserAvatar from '@/components/dashboard/UserAvatar.vue'
+import ConfirmDialog from '@/components/states/ConfirmDialog.vue'
+import EmptyState from '@/components/states/EmptyState.vue'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import type { Member } from '@/types'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 const members = ref<Member[]>([])
 const ntfyBase = ref('')
+const loading = ref(true)
 const newName = ref('')
-const loading = ref(false)
+const adding = ref(false)
 
 async function load() {
   try {
@@ -19,13 +26,15 @@ async function load() {
     ntfyBase.value = data.ntfy_base_url
   } catch {
     toast.error('Failed to load members')
+  } finally {
+    loading.value = false
   }
 }
 
 async function addMember() {
   const name = newName.value.trim()
   if (!name) return
-  loading.value = true
+  adding.value = true
   try {
     const member = await api.addMember(name)
     members.value.push(member)
@@ -34,7 +43,7 @@ async function addMember() {
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : 'Failed to add member')
   } finally {
-    loading.value = false
+    adding.value = false
   }
 }
 
@@ -53,51 +62,63 @@ onMounted(load)
 
 <template>
   <div class="space-y-6">
-    <h1 class="text-2xl font-bold tracking-tight text-primary">Members</h1>
+    <PageHeader
+      title="Members"
+      :description="ntfyBase ? `Notifications go out via ${ntfyBase}` : 'Who shares the chores.'"
+    />
 
-    <!-- Add member -->
-    <div class="flex gap-2">
-      <Input
-        v-model="newName"
-        placeholder="Name"
-        class="max-w-xs"
-        @keydown.enter="addMember"
-      />
-      <Button :disabled="loading || !newName.trim()" @click="addMember">Add Member</Button>
+    <form class="flex gap-2" @submit.prevent="addMember">
+      <Input v-model="newName" placeholder="Name" class="max-w-xs" />
+      <Button type="submit" :disabled="adding || !newName.trim()">
+        <PlusIcon />
+        Add member
+      </Button>
+    </form>
+
+    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Skeleton v-for="i in 3" :key="i" class="h-32" />
     </div>
 
-    <p v-if="!members.length" class="text-sm text-muted-foreground">No members yet.</p>
+    <EmptyState
+      v-else-if="!members.length"
+      title="No members yet"
+      description="Add whoever shares the chores — each gets a notification topic."
+    />
 
-    <!-- Member cards -->
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <Card v-for="member in members" :key="member.name">
-        <CardHeader class="pb-2">
-          <div class="flex items-center justify-between">
-            <CardTitle class="text-base">{{ member.name }}</CardTitle>
-            <Button variant="destructive" size="sm" @click="deleteMember(member.name)">
-              Remove
-            </Button>
+    <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Card
+        v-for="(member, i) in members"
+        :key="member.name"
+        class="rise-in gap-3 py-5"
+        :style="{ animationDelay: `${Math.min(i, 8) * 40}ms` }"
+      >
+        <CardHeader class="pb-0">
+          <div class="flex items-center gap-3">
+            <UserAvatar :name="member.name" size="lg" />
+            <CardTitle class="min-w-0 flex-1 truncate text-base">{{ member.name }}</CardTitle>
+            <ConfirmDialog
+              destructive
+              :title="`Remove ${member.name}?`"
+              description="They drop out of the rotation immediately."
+              confirm-label="Remove"
+              @confirm="deleteMember(member.name)"
+            >
+              <Button variant="ghost" size="xs" class="text-destructive">Remove</Button>
+            </ConfirmDialog>
           </div>
-          <CardDescription>
-            ntfy topic:
-            <a
-              :href="member.ntfy_url"
-              target="_blank"
-              rel="noopener"
-              class="font-mono text-xs underline hover:no-underline"
-            >{{ member.topic }}</a>
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          <p class="break-all font-mono text-xs text-muted-foreground">
-            {{ member.ntfy_url }}
-          </p>
+          <a
+            :href="member.ntfy_url"
+            target="_blank"
+            rel="noopener"
+            class="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
+          >
+            {{ member.topic }}
+            <ExternalLinkIcon class="size-3" />
+          </a>
         </CardContent>
       </Card>
     </div>
-
-    <p v-if="ntfyBase" class="text-xs text-muted-foreground">
-      Notification base URL: <span class="font-mono">{{ ntfyBase }}</span>
-    </p>
   </div>
 </template>

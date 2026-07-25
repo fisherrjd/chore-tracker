@@ -1,60 +1,109 @@
 <script setup lang="ts">
+import { ClipboardCheckIcon, MenuIcon } from '@lucide/vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { Toaster } from 'vue-sonner'
-import { computed } from 'vue'
+import ThemePicker from '@/components/ThemePicker.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Toaster } from '@/components/ui/sonner'
+import { useTheme } from '@/composables/useTheme'
 
+const { theme, mode } = useTheme()
 const route = useRoute()
 
-const navLinks = [
-  { to: '/', label: 'Home' },
+const links = [
+  { to: '/', label: 'Today' },
   { to: '/rooms', label: 'Rooms' },
   { to: '/members', label: 'Members' },
   { to: '/settings', label: 'Settings' },
 ]
 
-function isActive(path: string) {
-  if (path === '/') return route.path === '/'
-  return route.path.startsWith(path)
+// Today stays lit on per-member checklist pages
+function isActive(to: string) {
+  if (to === '/') return route.path === '/' || route.path.startsWith('/checklist/')
+  return route.path === to || route.path.startsWith(`${to}/`)
 }
-
-const currentYear = computed(() => new Date().getFullYear())
 </script>
 
 <template>
-  <div class="min-h-screen bg-background">
-    <header class="bg-primary text-primary-foreground shadow-sm">
-      <div class="mx-auto max-w-5xl px-4">
-        <div class="flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 py-2">
-          <RouterLink to="/" class="text-base font-semibold text-primary-foreground">
-            🧹 Chore Tracker
+  <div class="flex min-h-screen flex-col bg-background text-foreground">
+    <header class="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+      <div class="mx-auto flex h-14 w-full max-w-5xl items-center gap-5 px-4">
+        <RouterLink to="/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
+          <span
+            class="grid size-6 place-items-center rounded-md bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-sm"
+          >
+            <ClipboardCheckIcon class="size-3.5" />
+          </span>
+          Chore Tracker
+        </RouterLink>
+        <nav class="hidden items-center gap-4 text-sm text-muted-foreground md:flex">
+          <RouterLink
+            v-for="link in links"
+            :key="link.to"
+            :to="link.to"
+            class="relative py-1 whitespace-nowrap transition-colors hover:text-foreground"
+            :class="
+              isActive(link.to)
+                ? 'text-foreground after:absolute after:-bottom-0.5 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
+                : ''
+            "
+          >
+            {{ link.label }}
           </RouterLink>
-          <nav class="flex flex-wrap gap-1">
-            <RouterLink
-              v-for="link in navLinks"
-              :key="link.to"
-              :to="link.to"
-              :class="[
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                isActive(link.to)
-                  ? 'bg-primary-foreground/15 text-primary-foreground'
-                  : 'text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground',
-              ]"
-            >
-              {{ link.label }}
-            </RouterLink>
-          </nav>
+        </nav>
+        <div class="ml-auto flex items-center gap-1">
+          <ThemePicker />
+          <ThemeToggle />
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="icon" class="md:hidden" aria-label="Open navigation">
+                <MenuIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" class="w-44">
+              <DropdownMenuItem v-for="link in links" :key="link.to" as-child>
+                <RouterLink
+                  :to="link.to"
+                  class="w-full"
+                  :class="isActive(link.to) ? 'font-medium' : ''"
+                >
+                  {{ link.label }}
+                  <span
+                    v-if="isActive(link.to)"
+                    class="ml-auto size-1.5 rounded-full bg-primary"
+                    aria-hidden="true"
+                  />
+                </RouterLink>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
-
-    <main class="mx-auto max-w-5xl px-4 py-8">
-      <RouterView />
+    <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <RouterView v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </RouterView>
     </main>
-
-    <footer class="border-t-2 border-primary/30 py-4 text-center text-xs text-muted-foreground">
-      Chore Tracker &copy; {{ currentYear }}
+    <footer class="border-t">
+      <div
+        class="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 text-xs text-muted-foreground"
+      >
+        <span>chore tracker — built from app-template</span>
+        <span class="inline-flex items-center gap-1.5" title="current theme">
+          <span class="size-1.5 rounded-full bg-primary" />
+          {{ theme }} · {{ mode }}
+        </span>
+      </div>
     </footer>
-
-    <Toaster position="bottom-right" rich-colors />
+    <Toaster position="bottom-right" />
   </div>
 </template>
