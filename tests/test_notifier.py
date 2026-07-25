@@ -45,7 +45,7 @@ def fake_http(monkeypatch):
     _FakeClient.calls = []
     _FakeClient.status = 200
     _FakeClient.raise_exc = False
-    monkeypatch.setattr(notifier.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(notifier.httpx2, "AsyncClient", _FakeClient)
     return _FakeClient
 
 

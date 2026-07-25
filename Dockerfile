@@ -1,31 +1,39 @@
+# Stage 1 — build the Vue SPA
+FROM oven/bun:1 AS frontend-build
+WORKDIR /build
+COPY frontend/package.json frontend/bun.lock* ./
+RUN bun install --frozen-lockfile
+COPY frontend/ .
+RUN bun run build
+
+# Stage 2 — Python app
 FROM python:3.13-slim
 
-# tzdata: the slim image ships no IANA tz database, which `zoneinfo` needs to
-# resolve the configured timezone (e.g. America/Denver) for "today".
+# tzdata: slim image has no IANA tz database, needed by zoneinfo for the
+# configured timezone (e.g. America/Denver).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# Pull uv binary from the official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Install dependencies first (cached layer — only reruns when lock file changes)
+# Dependencies (cached layer — only reruns when lock file changes)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Copy application code
+# Application code
 COPY chore_tracker/ ./chore_tracker/
-COPY templates/     ./templates/
-COPY static/        ./static/
-COPY main.py        ./
+COPY main.py ./
 
-# Bake in a default config — override at runtime by mounting your own:
+# Bake in a default config — override at runtime:
 #   -v ./config.yaml:/app/config.yaml
 COPY config.yaml ./
 
-# Run as non-root
+# Built SPA from the first stage
+COPY --from=frontend-build /build/dist ./frontend/dist/
+
 RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
 USER appuser
 

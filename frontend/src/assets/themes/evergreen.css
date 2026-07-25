@@ -1,0 +1,47 @@
+/* Evergreen — the default. Dark-first: near-black green surfaces, forest-green
+   hero, sage-grey text, tan warmth on hovers. Light mode is greige paper with
+   deep forest and tan. All values are HSL triplets. */
+
+[data-theme='evergreen'] {
+  --background: 45 14% 93%;          /* warm greige paper */
+  --foreground: 165 18% 14%;         /* deep green-grey */
+  --card: 45 20% 96%;
+  --card-foreground: 165 18% 14%;
+  --popover: 45 20% 96%;
+  --popover-foreground: 165 18% 14%;
+  --primary: 152 42% 25%;            /* deep forest green */
+  --primary-foreground: 45 30% 97%;
+  --secondary: 42 22% 85%;           /* tan */
+  --secondary-foreground: 35 22% 24%;
+  --muted: 45 12% 88%;
+  --muted-foreground: 160 10% 38%;
+  --accent: 140 14% 84%;             /* sage */
+  --accent-foreground: 160 22% 18%;
+  --destructive: 8 62% 44%;          /* rust */
+  --destructive-foreground: 45 30% 97%;
+  --border: 45 12% 79%;
+  --input: 45 12% 79%;
+  --ring: 152 42% 32%;
+}
+
+[data-theme='evergreen'].dark {
+  --background: 165 12% 7%;          /* forest at night */
+  --foreground: 140 10% 87%;         /* pale sage */
+  --card: 163 11% 10%;
+  --card-foreground: 140 10% 87%;
+  --popover: 163 11% 10%;
+  --popover-foreground: 140 10% 87%;
+  --primary: 152 42% 42%;            /* forest green */
+  --primary-foreground: 150 25% 97%;
+  --secondary: 160 9% 15%;           /* grey-green panel */
+  --secondary-foreground: 140 10% 87%;
+  --muted: 160 8% 14%;
+  --muted-foreground: 140 7% 58%;    /* grey sage */
+  --accent: 45 12% 17%;              /* dark tan hover */
+  --accent-foreground: 42 32% 84%;   /* tan */
+  --destructive: 8 56% 50%;
+  --destructive-foreground: 40 30% 96%;
+  --border: 160 8% 19%;
+  --input: 160 8% 19%;
+  --ring: 152 42% 48%;
+}

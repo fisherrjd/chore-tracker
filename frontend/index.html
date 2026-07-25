@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="evergreen">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chore Tracker</title>
+    <script>
+      // apply persisted theme/mode before first paint to avoid a flash.
+      // keep the theme list in sync with src/lib/themes.ts — a saved theme
+      // that no longer exists must fall back, not paint unstyled.
+      const themes = ['evergreen', 'dusk', 'earthy', 'grapebox']
+      const saved = localStorage.getItem('app.theme')
+      const mode = localStorage.getItem('app.mode') ?? 'light'
+      document.documentElement.dataset.theme = themes.includes(saved) ? saved : 'evergreen'
+      document.documentElement.classList.toggle('dark', mode === 'dark')
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
