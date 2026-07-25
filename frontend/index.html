@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="evergreen" class="dark">
+<html lang="en" data-theme="evergreen">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -11,7 +11,7 @@
       // that no longer exists must fall back, not paint unstyled.
       const themes = ['evergreen', 'dusk', 'earthy', 'grapebox']
       const saved = localStorage.getItem('app.theme')
-      const mode = localStorage.getItem('app.mode') ?? 'dark'
+      const mode = localStorage.getItem('app.mode') ?? 'light'
       document.documentElement.dataset.theme = themes.includes(saved) ? saved : 'evergreen'
       document.documentElement.classList.toggle('dark', mode === 'dark')
     </script>

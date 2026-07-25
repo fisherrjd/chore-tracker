@@ -14,7 +14,7 @@ function initialTheme(): ThemeId {
 function initialMode(): Mode {
   const saved = localStorage.getItem(MODE_KEY)
   if (saved === 'light' || saved === 'dark') return saved
-  return 'dark' // dark over light, always
+  return 'light' // chores happen with the lights on
 }
 
 // module-scope singleton: every component shares the same theme state
