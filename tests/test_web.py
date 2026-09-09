@@ -215,3 +215,131 @@ def test_checklist_css_is_served(client):
     r = client.get("/static/style.css")
     assert r.status_code == 200
     assert ".checklist" in r.text
+
+
+# ── Shopping lists ────────────────────────────────────────────────────────────
+
+def _lists():
+    from chore_tracker.lists import load_lists
+    from tests.helpers import lists_path
+    return {gl.name: gl for gl in load_lists(lists_path()).lists}
+
+
+def test_lists_page_seeds_default_list_and_nav_link(client):
+    r = client.get("/lists")
+    assert r.status_code == 200
+    assert "Groceries" in r.text
+    assert 'href="/lists"' in r.text
+    assert "Nothing on the list." in r.text
+
+
+def test_add_list_persists_and_rejects_duplicate(client):
+    r = client.post("/lists", data={"name": "Costco"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/lists?")
+    assert "Costco" in _lists()
+
+    r = client.post("/lists", data={"name": "Costco"}, follow_redirects=False)
+    assert "kind=warning" in r.headers["location"]
+    assert list(_lists()) == ["Groceries", "Costco"]
+
+
+def test_add_list_item_persists_in_order(client):
+    client.post("/lists/Groceries/items", data={"item": "Milk"})
+    client.post("/lists/Groceries/items", data={"item": "Eggs"})
+    items = _lists()["Groceries"].items
+    assert [(i.name, i.done) for i in items] == [("Milk", False), ("Eggs", False)]
+
+
+def test_add_duplicate_unbought_item_warns(client):
+    client.post("/lists/Groceries/items", data={"item": "Milk"})
+    r = client.post("/lists/Groceries/items", data={"item": "Milk"}, follow_redirects=False)
+    assert "kind=warning" in r.headers["location"]
+    assert len(_lists()["Groceries"].items) == 1
+
+
+def test_readding_bought_item_puts_it_back_on_the_list(client):
+    client.post("/lists/Groceries/items", data={"item": "Milk"})
+    client.post("/lists/Groceries/items/toggle", data={"item": "Milk", "done": "1"})
+    assert _lists()["Groceries"].find("Milk").done is True
+
+    r = client.post("/lists/Groceries/items", data={"item": "Milk"}, follow_redirects=False)
+    assert "kind=warning" not in r.headers["location"]
+    items = _lists()["Groceries"].items
+    assert len(items) == 1 and items[0].done is False
+
+
+def test_toggle_sets_done_and_unchecked_submit_clears_it(client):
+    client.post("/lists/Groceries/items", data={"item": "Bread"})
+    client.post("/lists/Groceries/items/toggle", data={"item": "Bread", "done": "1"})
+    assert _lists()["Groceries"].find("Bread").done is True
+    r = client.get("/lists")
+    assert "checked" in r.text and "is-done" in r.text and "all bought" in r.text
+
+    # An unchecked checkbox is simply absent from the form body.
+    client.post("/lists/Groceries/items/toggle", data={"item": "Bread"})
+    assert _lists()["Groceries"].find("Bread").done is False
+    assert "1 to buy" in client.get("/lists").text
+
+
+def test_toggle_unknown_item_warns(client):
+    r = client.post(
+        "/lists/Groceries/items/toggle", data={"item": "Ghost", "done": "1"},
+        follow_redirects=False,
+    )
+    assert "kind=warning" in r.headers["location"]
+
+
+def test_delete_list_item(client):
+    client.post("/lists/Groceries/items", data={"item": "Milk"})
+    client.post("/lists/Groceries/items", data={"item": "Eggs"})
+    client.post("/lists/Groceries/items/delete", data={"item": "Milk"})
+    assert [i.name for i in _lists()["Groceries"].items] == ["Eggs"]
+
+
+def test_clear_bought_removes_only_done_items(client):
+    for name in ("Milk", "Eggs", "Bread"):
+        client.post("/lists/Groceries/items", data={"item": name})
+    client.post("/lists/Groceries/items/toggle", data={"item": "Milk", "done": "1"})
+    client.post("/lists/Groceries/items/toggle", data={"item": "Bread", "done": "1"})
+    assert "Clear 2 bought" in client.get("/lists").text
+
+    r = client.post("/lists/Groceries/clear", follow_redirects=False)
+    assert "Cleared+2+bought+items" in r.headers["location"].replace("%20", "+")
+    assert [i.name for i in _lists()["Groceries"].items] == ["Eggs"]
+    assert "Clear " not in client.get("/lists").text.split("Add a list")[0].split("card-body")[1]
+
+
+def test_delete_list(client):
+    client.post("/lists", data={"name": "Costco"})
+    client.post("/lists/delete", data={"name": "Groceries"})
+    assert list(_lists()) == ["Costco"]
+
+
+def test_deleting_last_list_stays_empty_across_reloads(client):
+    client.post("/lists/delete", data={"name": "Groceries"})
+    assert _lists() == {}
+    assert "No lists yet." in client.get("/lists").text
+
+
+def test_unknown_list_routes_warn(client):
+    for path, data in (
+        ("/lists/Nope/items", {"item": "x"}),
+        ("/lists/Nope/clear", {}),
+    ):
+        r = client.post(path, data=data, follow_redirects=False)
+        assert r.status_code == 303 and "kind=warning" in r.headers["location"], path
+
+
+def test_list_writes_never_touch_config(client):
+    before = config_path().read_text()
+    client.post("/lists", data={"name": "Costco"})
+    client.post("/lists/Costco/items", data={"item": "Paper towels"})
+    client.post("/lists/Costco/items/toggle", data={"item": "Paper towels", "done": "1"})
+    assert config_path().read_text() == before
+    from tests.helpers import lists_path
+    assert lists_path().exists()
+
+
+def test_list_css_is_served(client):
+    r = client.get("/static/style.css")
+    assert ".list-row" in r.text

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Chore Tracker{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
   <header class="site-nav">
@@ -12,6 +12,7 @@
     <nav>
       <a href="/" class="{{ 'active' if request.url.path == '/' }}">Schedule</a>
       <a href="/rooms" class="{{ 'active' if request.url.path.startswith('/rooms') }}">Rooms</a>
+      <a href="/lists" class="{{ 'active' if request.url.path.startswith('/lists') }}">Lists</a>
       <a href="/members" class="{{ 'active' if request.url.path.startswith('/members') }}">Members</a>
       <a href="/settings" class="{{ 'active' if request.url.path.startswith('/settings') }}">Settings</a>
     </nav>

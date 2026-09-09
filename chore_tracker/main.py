@@ -12,12 +12,15 @@ from pydantic import ValidationError
 
 from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
+from .lists import ListItem, ShoppingList, load_lists, save_lists
 from .logging_config import configure_logging
 from .notifier import notify_today
 from .scheduler import get_assignment, get_day_index, get_schedule
 
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
 CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
+# Shopping lists live beside the config by default so they share its durable mount.
+LISTS_PATH = Path(os.environ.get("CHORE_LISTS", CONFIG_PATH.with_name("lists.yaml")))
 
 log = logging.getLogger(__name__)
 
@@ -318,6 +321,100 @@ async def update_checklist(member: str, tasks: list[str] = Form(default=[])):
         extra={"member": member, "room": room.name if room else None, "done": len(recorded)},
     )
     return redirect(f"/checklist/{member}")
+
+
+# ── Shopping lists ────────────────────────────────────────────────────────────
+
+@app.get("/lists")
+async def lists_page(request: Request, msg: str = "", kind: str = "success"):
+    store = load_lists(LISTS_PATH)
+    return templates.TemplateResponse(
+        request=request, name="lists.html",
+        context={"lists": store.lists, "msg": msg, "kind": kind},
+    )
+
+
+@app.post("/lists")
+async def add_list(name: str = Form(...)):
+    store = load_lists(LISTS_PATH)
+    name = name.strip()
+    if name and store.find(name) is None:
+        store.lists.append(ShoppingList(name=name))
+        save_lists(store, LISTS_PATH)
+        log.info("list.added", extra={"list": name})
+        return redirect("/lists", f"Added list '{name}'")
+    return redirect("/lists", "List already exists or name is empty", "warning")
+
+
+@app.post("/lists/delete")
+async def delete_list(name: str = Form(...)):
+    store = load_lists(LISTS_PATH)
+    store.lists = [sl for sl in store.lists if sl.name != name]
+    save_lists(store, LISTS_PATH)
+    log.info("list.deleted", extra={"list": name})
+    return redirect("/lists", f"Removed list '{name}'")
+
+
+@app.post("/lists/{list_name}/items")
+async def add_list_item(list_name: str, item: str = Form(...)):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        return redirect("/lists", f"Unknown list '{list_name}'", "warning")
+    item = item.strip()
+    if not item:
+        return redirect("/lists", "Item name is empty", "warning")
+    existing = slist.find(item)
+    if existing is not None and not existing.done:
+        return redirect("/lists", f"'{item}' is already on {list_name}", "warning")
+    if existing is not None:
+        # Re-adding something already bought just puts it back on the list.
+        existing.done = False
+    else:
+        slist.items.append(ListItem(name=item))
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.added", extra={"list": list_name, "item": item})
+    return redirect("/lists", f"Added '{item}' to {list_name}")
+
+
+@app.post("/lists/{list_name}/items/toggle")
+async def toggle_list_item(list_name: str, item: str = Form(...), done: bool = Form(False)):
+    """Set (not flip) an item's bought state. The checkbox only posts ``done``
+    when checked, so an unchecked submit clears it — idempotent under taps
+    from two phones at once."""
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    entry = slist.find(item) if slist else None
+    if entry is None:
+        return redirect("/lists", f"'{item}' is not on {list_name}", "warning")
+    entry.done = done
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.toggled", extra={"list": list_name, "item": item, "done": done})
+    return redirect("/lists")
+
+
+@app.post("/lists/{list_name}/items/delete")
+async def delete_list_item(list_name: str, item: str = Form(...)):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is not None:
+        slist.items = [i for i in slist.items if i.name != item]
+        save_lists(store, LISTS_PATH)
+        log.info("list_item.deleted", extra={"list": list_name, "item": item})
+    return redirect("/lists", f"Removed '{item}'")
+
+
+@app.post("/lists/{list_name}/clear")
+async def clear_bought_items(list_name: str):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        return redirect("/lists", f"Unknown list '{list_name}'", "warning")
+    removed = slist.bought
+    slist.items = [i for i in slist.items if not i.done]
+    save_lists(store, LISTS_PATH)
+    log.info("list.cleared", extra={"list": list_name, "removed": removed})
+    return redirect("/lists", f"Cleared {removed} bought item{'s' if removed != 1 else ''} from {list_name}")
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────
