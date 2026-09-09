@@ -26,6 +26,7 @@ from starlette.testclient import TestClient  # noqa: E402
 
 from chore_tracker import checks  # noqa: E402
 from chore_tracker.main import CONFIG_PATH as APP_CONFIG_PATH  # noqa: E402
+from chore_tracker.main import LISTS_PATH as APP_LISTS_PATH  # noqa: E402
 from chore_tracker.main import app  # noqa: E402
 from tests.helpers import default_config, write_config  # noqa: E402
 
@@ -35,9 +36,11 @@ assert str(APP_CONFIG_PATH) == os.environ["CHORE_CONFIG"], APP_CONFIG_PATH
 
 @pytest.fixture(autouse=True)
 def fresh_state():
-    """Reset the in-memory checklist store and seed the default config."""
+    """Reset the in-memory checklist store, seed the default config, and drop
+    any lists file so each test starts from the seeded default list."""
     checks._state.clear()
     write_config(default_config())
+    APP_LISTS_PATH.unlink(missing_ok=True)
     yield
     checks._state.clear()
 

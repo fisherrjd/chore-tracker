@@ -76,6 +76,7 @@ Then, from the ops repo, preview with `hex --dryrun -t specs.nix` and apply with
 ## App runtime notes
 
 - **Config** lives at `/data/config.yaml` (mounted from `hostPath: /var/lib/chore-tracker`, via `CHORE_CONFIG`). The `config.yaml` baked into the image is only a default — the mounted file wins, and editing it (or using the in-app **Settings** page) does not require a redeploy.
+- **Shopping lists** live at `/data/lists.yaml` — the app derives the path from `CHORE_CONFIG` (same directory, `lists.yaml`), or set `CHORE_LISTS` explicitly. It is created on the first write, so no ops change is needed as long as `/data` stays a writable directory mount. Back it up alongside `config.yaml`.
 - **Notifications** are driven by an in-process APScheduler inside the web server (not a k8s CronJob). They only fire while the pod is running, at the times in `notify_times`, in the configured `timezone` (America/Denver). With `replicas: 1` this is correct; scaling up would duplicate notifications since each replica runs its own scheduler.
 - **Timezone:** the image installs OS `tzdata` (the slim base lacks it) so `zoneinfo` can resolve `America/Denver`.
 - **Logs** are structured (logfmt) to stdout — view with `kubectl logs`. Key events: `app.startup`, `scheduler.jobs_scheduled`, `notify.run_start/sent/send_failed/run_complete`.

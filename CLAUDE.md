@@ -45,18 +45,27 @@ single-purpose:
 - **`checks.py`** — in-memory, process-local checklist state keyed by day_index.
   Intentionally **not** persisted: a restart clears it, and writing any day drops
   all other days, so completion never lingers past the current day.
+- **`lists.py`** — household shopping lists (named lists like "Costco" or
+  "Target", each holding items with a `done` flag), persisted to their own YAML
+  file. Pure load/save + small Pydantic models; the routes in `main.py` do the
+  mutations, all under `/lists`.
 - **`logging_config.py`** — logfmt formatter to stdout. App code emits
   structured events via `log.info("event.name", extra={...})`; new log lines
   should follow that `event.name` + `extra=` convention so `kubectl logs` stays
   parseable.
 
-### Two state stores, by design
+### Three state stores, by design
 
 1. **Config (durable)** — rooms, members, notify times. Edited through the web
    UI, persisted to `config.yaml`. In production this is a mounted file at
    `/data/config.yaml` (env `CHORE_CONFIG`); the baked-in `config.yaml` is only a
    default. Every request re-reads config from disk via `load_config`.
 2. **Checklist completion (ephemeral)** — `checks._state`, in-process, daily.
+3. **Shopping lists (durable, not config)** — `lists.yaml` beside the config
+   file by default (override with env `CHORE_LISTS`). Kept separate so
+   shopping churn never rewrites `config.yaml`. A missing file seeds one empty
+   "Groceries" list in memory; an existing empty file stays empty. Every
+   request re-reads it via `load_lists`; writes are atomic like config.
 
 ### Scheduling
 

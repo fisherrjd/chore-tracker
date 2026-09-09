@@ -38,3 +38,7 @@ venv.bak/
 
 
 OPS.md
+
+# local shopping-list data created by `python main.py` (prod uses /data/lists.yaml)
+/lists.yaml
+*.yaml.tmp

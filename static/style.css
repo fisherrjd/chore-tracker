@@ -562,6 +562,50 @@ input[type="time"]:focus {
   text-decoration: line-through;
 }
 
+/* ── Shopping lists ── */
+.list-items {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Checkbox form on the left, delete form on the right; the label owns the
+   whole tappable width between them. */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  border-bottom: 1px solid var(--border);
+}
+.list-row:last-child { border-bottom: none; }
+
+.list-row .list-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-row .check-row {
+  padding: .45rem .35rem;
+  min-height: 44px;
+}
+
+.list-row .check-row span {
+  /* Long item names wrap instead of pushing the ✕ off-screen. */
+  overflow-wrap: anywhere;
+}
+
+.list-clear {
+  margin-top: .75rem;
+}
+
+.list-clear .btn {
+  width: 100%;
+}
+
+.card-head .room-name .progress-badge {
+  margin-left: .4rem;
+  vertical-align: middle;
+}
+
 /* ── Mobile ── */
 @media (max-width: 480px) {
   /* Two-row header: brand on top, nav as an even tab strip below. */
