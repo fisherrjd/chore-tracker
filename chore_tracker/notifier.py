@@ -1,7 +1,7 @@
 import logging
 from urllib.parse import quote
 
-import httpx
+import httpx2
 
 from .config import AppConfig, Member
 from .scheduler import get_assignment, get_day_index
@@ -27,7 +27,7 @@ async def send_notification(
         # Tapping the notification opens this member's checklist directly.
         headers["Click"] = f"{dashboard_url.rstrip('/')}/checklist/{quote(member.name)}"
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx2.AsyncClient(timeout=10) as client:
             resp = await client.post(url, content=f"{task_list}", headers=headers)
         ok = resp.is_success
         log.info(

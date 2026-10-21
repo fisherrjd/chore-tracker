@@ -1,7 +1,7 @@
 """Shared fixtures.
 
-The app reads ``CHORE_BASE`` (for templates/static) and ``CHORE_CONFIG`` (the
-config file) at *import time*, so both env vars are set before importing
+The app reads ``CHORE_BASE`` (for SPA dist) and ``CHORE_CONFIG`` (the config
+file) at *import time*, so both env vars are set before importing
 ``chore_tracker.main``. Tests run against an isolated temp config file, never
 the real ``config.yaml``.
 """
@@ -11,15 +11,16 @@ from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-# Templates and static assets live at the project root.
-os.environ["CHORE_BASE"] = str(PROJECT_ROOT)
-
-# Point the app at a throwaway config file for the whole session. Guarded so a
+# Point the app at a throwaway base + config for the whole session. Guarded so a
 # stray re-import of this module can never repoint the app at a second temp dir.
+# The base holds a stub of the built SPA, so the catch-all route is testable
+# without running the frontend build first.
 if "CHORE_CONFIG" not in os.environ:
     _TMP_DIR = Path(tempfile.mkdtemp(prefix="chore-tests-"))
+    _DIST = _TMP_DIR / "frontend" / "dist"
+    (_DIST / "assets").mkdir(parents=True)
+    (_DIST / "index.html").write_text("<!doctype html><title>chore tracker</title><div id=app></div>")
+    os.environ["CHORE_BASE"] = str(_TMP_DIR)
     os.environ["CHORE_CONFIG"] = str(_TMP_DIR / "config.yaml")
 
 from starlette.testclient import TestClient  # noqa: E402

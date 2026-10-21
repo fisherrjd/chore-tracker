@@ -4,11 +4,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
@@ -19,6 +18,7 @@ from .scheduler import get_assignment, get_day_index, get_schedule
 
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
 CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
+DIST = BASE_DIR / "frontend" / "dist"
 # Shopping lists live beside the config by default so they share its durable mount.
 LISTS_PATH = Path(os.environ.get("CHORE_LISTS", CONFIG_PATH.with_name("lists.yaml")))
 
@@ -28,9 +28,6 @@ scheduler = AsyncIOScheduler()
 
 
 async def _daily_notify() -> None:
-    """Cron entry point. Must be a coroutine so AsyncIOScheduler awaits it on
-    the event loop rather than dispatching it to a thread (where there is no
-    running loop and the coroutine would never be awaited)."""
     await notify_today(load_config(CONFIG_PATH), trigger="scheduled")
 
 
@@ -64,216 +61,41 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Chore Tracker", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+# Serve built frontend assets; absent during dev/tests — skip gracefully.
+if (DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
 
-def redirect(url: str, msg: str = "", kind: str = "success") -> RedirectResponse:
-    if msg:
-        sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}msg={msg}&kind={kind}"
-    return RedirectResponse(url, status_code=303)
+# ── Request models ────────────────────────────────────────────────────────────
+
+class AddRoomReq(BaseModel):
+    name: str
+
+class AddTaskReq(BaseModel):
+    task: str
+
+class AddMemberReq(BaseModel):
+    name: str
+
+class AddNotifyTimeReq(BaseModel):
+    time: str
+
+class UpdateChecklistReq(BaseModel):
+    tasks: list[str]
+
+class AddListReq(BaseModel):
+    name: str
+
+class AddListItemReq(BaseModel):
+    item: str
+
+class SetListItemReq(BaseModel):
+    item: str
+    done: bool
 
 
-# ── Schedule / home ──────────────────────────────────────────────────────────
-
-@app.get("/")
-async def home(request: Request, msg: str = "", kind: str = "success"):
-    config = load_config(CONFIG_PATH)
-    schedule = get_schedule(config, days=14)
-    today_idx = get_day_index(config.start_date, config.today)
-    n_rooms = len(config.rooms)
-    n_members = len(config.members)
-    half_cycle = (n_rooms // n_members) if n_members else 0
-    room_map = {r.name: r for r in config.rooms}
-    # Per-person progress for today, so the schedule cards can show "3/7 done".
-    done_map: dict[str, dict[str, int]] = {}
-    if schedule:
-        for person, room_name in schedule[0]["assignments"].items():
-            room = room_map.get(room_name)
-            tasks = set(room.tasks) if room else set()
-            done_map[person] = {
-                "done": len(get_done(today_idx, person) & tasks),
-                "total": len(tasks),
-            }
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "schedule": schedule,
-            "today_idx": today_idx,
-            "half_cycle": half_cycle,
-            "notify_times": config.notify_times,
-            "room_map": room_map,
-            "done_map": done_map,
-            "msg": msg,
-            "kind": kind,
-        },
-    )
-
-
-# ── Rooms ────────────────────────────────────────────────────────────────────
-
-@app.get("/rooms")
-async def rooms_page(request: Request, msg: str = "", kind: str = "success"):
-    config = load_config(CONFIG_PATH)
-    return templates.TemplateResponse(
-        request=request, name="rooms.html",
-        context={"rooms": config.rooms, "msg": msg, "kind": kind},
-    )
-
-
-@app.post("/rooms")
-async def add_room(name: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    name = name.strip()
-    if name and not any(r.name == name for r in config.rooms):
-        config.rooms.append(Room(name=name))
-        save_config(config, CONFIG_PATH)
-        log.info("room.added", extra={"room": name})
-        return redirect("/rooms", f"Added room '{name}'")
-    return redirect("/rooms", "Room already exists or name is empty", "warning")
-
-
-@app.post("/rooms/delete")
-async def delete_room(name: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    config.rooms = [r for r in config.rooms if r.name != name]
-    save_config(config, CONFIG_PATH)
-    log.info("room.deleted", extra={"room": name})
-    return redirect("/rooms", f"Removed room '{name}'")
-
-
-@app.post("/rooms/{room_name}/tasks")
-async def add_task(room_name: str, task: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    task = task.strip()
-    for room in config.rooms:
-        if room.name == room_name and task and task not in room.tasks:
-            room.tasks.append(task)
-            save_config(config, CONFIG_PATH)
-            log.info("task.added", extra={"room": room_name, "task": task})
-            return redirect("/rooms", f"Added task to {room_name}")
-    return redirect("/rooms", "Room not found or task already exists", "warning")
-
-
-@app.post("/rooms/{room_name}/tasks/delete")
-async def delete_task(room_name: str, task: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    for room in config.rooms:
-        if room.name == room_name:
-            room.tasks = [t for t in room.tasks if t != task]
-            save_config(config, CONFIG_PATH)
-            log.info("task.deleted", extra={"room": room_name, "task": task})
-            break
-    return redirect("/rooms", f"Removed task from {room_name}")
-
-
-# ── Members ───────────────────────────────────────────────────────────────────
-
-@app.get("/members")
-async def members_page(request: Request, msg: str = "", kind: str = "success"):
-    config = load_config(CONFIG_PATH)
-    return templates.TemplateResponse(
-        request=request, name="members.html",
-        context={
-            "members": config.members,
-            "ntfy_base_url": config.ntfy_base_url,
-            "msg": msg,
-            "kind": kind,
-        },
-    )
-
-
-@app.post("/members")
-async def add_member(name: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    name = name.strip()
-    if name and not any(m.name == name for m in config.members):
-        config.members.append(Member(name=name))
-        save_config(config, CONFIG_PATH)
-        log.info("member.added", extra={"member": name})
-        return redirect("/members", f"Added '{name}'")
-    return redirect("/members", "Member already exists or name is empty", "warning")
-
-
-@app.post("/members/delete")
-async def delete_member(name: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    config.members = [m for m in config.members if m.name != name]
-    save_config(config, CONFIG_PATH)
-    log.info("member.deleted", extra={"member": name})
-    return redirect("/members", f"Removed '{name}'")
-
-
-# ── Settings (notification times) ─────────────────────────────────────────────
-
-@app.get("/settings")
-async def settings_page(request: Request, msg: str = "", kind: str = "success"):
-    config = load_config(CONFIG_PATH)
-    return templates.TemplateResponse(
-        request=request, name="settings.html",
-        context={
-            "notify_times": config.notify_times,
-            "timezone": config.timezone,
-            "msg": msg,
-            "kind": kind,
-        },
-    )
-
-
-def _save_notify_times(config: AppConfig, times: list[str]) -> AppConfig | None:
-    """Re-validate the whole config with new times (normalizes + dedupes).
-
-    Returns the saved config, or None if the times are invalid."""
-    try:
-        updated = AppConfig.model_validate({**config_to_dict(config), "notify_times": times})
-    except ValidationError:
-        return None
-    save_config(updated, CONFIG_PATH)
-    _reschedule(updated)
-    return updated
-
-
-@app.post("/settings/notify-times")
-async def add_notify_time(time: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    time = time.strip()
-    updated = _save_notify_times(config, config.notify_times + [time])
-    if updated is None:
-        return redirect("/settings", f"Invalid time '{time}' — use HH:MM", "warning")
-    log.info("notify_time.added", extra={"time": time})
-    return redirect("/settings", f"Added notification at {time}")
-
-
-@app.post("/settings/notify-times/delete")
-async def delete_notify_time(time: str = Form(...)):
-    config = load_config(CONFIG_PATH)
-    remaining = [t for t in config.notify_times if t != time]
-    _save_notify_times(config, remaining)
-    log.info("notify_time.deleted", extra={"time": time})
-    return redirect("/settings", f"Removed notification at {time}")
-
-
-# ── Notifications ─────────────────────────────────────────────────────────────
-
-@app.post("/notify/today")
-async def send_today():
-    config = load_config(CONFIG_PATH)
-    results = await notify_today(config)
-    if not results:
-        return redirect("/", "No assignments to notify (check rooms and members)", "warning")
-    sent = [n for n, ok in results.items() if ok]
-    failed = [n for n, ok in results.items() if not ok]
-    parts = []
-    if sent:
-        parts.append(f"Sent to: {', '.join(sent)}")
-    if failed:
-        parts.append(f"Failed: {', '.join(failed)}")
-    return redirect("/", " | ".join(parts), "success" if not failed else "warning")
-
-
-# ── Daily checklist ───────────────────────────────────────────────────────────
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _todays_room(config: AppConfig, member: str) -> str | None:
     idx = get_day_index(config.start_date, config.today)
@@ -283,90 +105,265 @@ def _todays_room(config: AppConfig, member: str) -> str | None:
     return assignments.get(member)
 
 
-@app.get("/checklist/{member}")
-async def checklist(request: Request, member: str, msg: str = "", kind: str = "success"):
+def _save_notify_times(config: AppConfig, times: list[str]) -> AppConfig | None:
+    try:
+        updated = AppConfig.model_validate({**config_to_dict(config), "notify_times": times})
+    except ValidationError:
+        return None
+    save_config(updated, CONFIG_PATH)
+    _reschedule(updated)
+    return updated
+
+
+def _member_json(m: Member, ntfy_base_url: str) -> dict:
+    topic = m.name.lower()
+    return {"name": m.name, "topic": topic, "ntfy_url": f"{ntfy_base_url.rstrip('/')}/{topic}"}
+
+
+def _list_json(sl: ShoppingList) -> dict:
+    return {
+        "name": sl.name,
+        "items": [{"name": i.name, "done": i.done} for i in sl.items],
+        "remaining": sl.remaining,
+        "bought": sl.bought,
+    }
+
+
+# ── JSON API ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/home")
+async def api_home():
+    config = load_config(CONFIG_PATH)
+    schedule = get_schedule(config, days=14)
+    today_idx = get_day_index(config.start_date, config.today)
+    n_rooms = len(config.rooms)
+    n_members = len(config.members)
+    half_cycle = (n_rooms // n_members) if n_members else 0
+    room_map = {r.name: r for r in config.rooms}
+    done_map: dict[str, dict[str, int]] = {}
+    if schedule:
+        for person, room_name in schedule[0]["assignments"].items():
+            room = room_map.get(room_name)
+            tasks = set(room.tasks) if room else set()
+            done_map[person] = {
+                "done": len(get_done(today_idx, person) & tasks),
+                "total": len(tasks),
+            }
+    return {
+        "schedule": [
+            {"date": str(day["date"]), "assignments": day["assignments"]}
+            for day in schedule
+        ],
+        "today_idx": today_idx,
+        "half_cycle": half_cycle,
+        "notify_times": config.notify_times,
+        "done_map": done_map,
+    }
+
+
+@app.get("/api/schedule")
+async def api_schedule():
+    config = load_config(CONFIG_PATH)
+    return [
+        {"date": str(day["date"]), "assignments": day["assignments"]}
+        for day in get_schedule(config, days=14)
+    ]
+
+
+@app.get("/api/rooms")
+async def api_rooms():
+    config = load_config(CONFIG_PATH)
+    return [{"name": r.name, "tasks": r.tasks} for r in config.rooms]
+
+
+@app.post("/api/rooms", status_code=201)
+async def api_add_room(req: AddRoomReq):
+    config = load_config(CONFIG_PATH)
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=409, detail="Room name is empty")
+    if any(r.name == name for r in config.rooms):
+        raise HTTPException(status_code=409, detail=f"Room '{name}' already exists")
+    config.rooms.append(Room(name=name))
+    save_config(config, CONFIG_PATH)
+    log.info("room.added", extra={"room": name})
+    return {"name": name, "tasks": []}
+
+
+@app.delete("/api/rooms/{name}")
+async def api_delete_room(name: str):
+    config = load_config(CONFIG_PATH)
+    if not any(r.name == name for r in config.rooms):
+        raise HTTPException(status_code=404, detail=f"Room '{name}' not found")
+    config.rooms = [r for r in config.rooms if r.name != name]
+    save_config(config, CONFIG_PATH)
+    log.info("room.deleted", extra={"room": name})
+    return {"detail": f"Removed room '{name}'"}
+
+
+@app.post("/api/rooms/{room_name}/tasks", status_code=201)
+async def api_add_task(room_name: str, req: AddTaskReq):
+    config = load_config(CONFIG_PATH)
+    task = req.task.strip()
+    room = next((r for r in config.rooms if r.name == room_name), None)
+    if room is None:
+        raise HTTPException(status_code=404, detail=f"Room '{room_name}' not found")
+    if not task:
+        raise HTTPException(status_code=409, detail="Task name is empty")
+    if task in room.tasks:
+        raise HTTPException(status_code=409, detail=f"Task '{task}' already exists in '{room_name}'")
+    room.tasks.append(task)
+    save_config(config, CONFIG_PATH)
+    log.info("task.added", extra={"room": room_name, "task": task})
+    return {"task": task}
+
+
+@app.delete("/api/rooms/{room_name}/tasks/{task}")
+async def api_delete_task(room_name: str, task: str):
+    config = load_config(CONFIG_PATH)
+    room = next((r for r in config.rooms if r.name == room_name), None)
+    if room is None:
+        raise HTTPException(status_code=404, detail=f"Room '{room_name}' not found")
+    room.tasks = [t for t in room.tasks if t != task]
+    save_config(config, CONFIG_PATH)
+    log.info("task.deleted", extra={"room": room_name, "task": task})
+    return {"detail": f"Removed task '{task}' from '{room_name}'"}
+
+
+@app.get("/api/members")
+async def api_members():
+    config = load_config(CONFIG_PATH)
+    return {
+        "members": [_member_json(m, config.ntfy_base_url) for m in config.members],
+        "ntfy_base_url": config.ntfy_base_url,
+    }
+
+
+@app.post("/api/members", status_code=201)
+async def api_add_member(req: AddMemberReq):
+    config = load_config(CONFIG_PATH)
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=409, detail="Member name is empty")
+    if any(m.name == name for m in config.members):
+        raise HTTPException(status_code=409, detail=f"Member '{name}' already exists")
+    config.members.append(Member(name=name))
+    save_config(config, CONFIG_PATH)
+    log.info("member.added", extra={"member": name})
+    return _member_json(config.members[-1], config.ntfy_base_url)
+
+
+@app.delete("/api/members/{name}")
+async def api_delete_member(name: str):
+    config = load_config(CONFIG_PATH)
+    if not any(m.name == name for m in config.members):
+        raise HTTPException(status_code=404, detail=f"Member '{name}' not found")
+    config.members = [m for m in config.members if m.name != name]
+    save_config(config, CONFIG_PATH)
+    log.info("member.deleted", extra={"member": name})
+    return {"detail": f"Removed member '{name}'"}
+
+
+@app.get("/api/settings")
+async def api_settings():
+    config = load_config(CONFIG_PATH)
+    return {"notify_times": config.notify_times, "timezone": config.timezone}
+
+
+@app.post("/api/settings/notify-times", status_code=201)
+async def api_add_notify_time(req: AddNotifyTimeReq):
+    config = load_config(CONFIG_PATH)
+    time = req.time.strip()
+    updated = _save_notify_times(config, config.notify_times + [time])
+    if updated is None:
+        raise HTTPException(status_code=400, detail=f"Invalid time '{time}' — use HH:MM")
+    log.info("notify_time.added", extra={"time": time})
+    return {"notify_times": updated.notify_times}
+
+
+@app.delete("/api/settings/notify-times/{time}")
+async def api_delete_notify_time(time: str):
+    config = load_config(CONFIG_PATH)
+    remaining = [t for t in config.notify_times if t != time]
+    updated = _save_notify_times(config, remaining)
+    log.info("notify_time.deleted", extra={"time": time})
+    return {"notify_times": updated.notify_times if updated else remaining}
+
+
+@app.get("/api/checklist/{member}")
+async def api_checklist_get(member: str):
     config = load_config(CONFIG_PATH)
     if not any(m.name == member for m in config.members):
-        return redirect("/", f"Unknown member '{member}'", "warning")
+        raise HTTPException(status_code=404, detail=f"Unknown member '{member}'")
     idx = get_day_index(config.start_date, config.today)
     room_name = _todays_room(config, member)
     room = next((r for r in config.rooms if r.name == room_name), None)
     tasks = room.tasks if room else []
-    return templates.TemplateResponse(
-        request=request, name="checklist.html",
-        context={
-            "member": member,
-            "room_name": room_name,
-            "tasks": tasks,
-            "done": get_done(idx, member),
-            "msg": msg,
-            "kind": kind,
-        },
-    )
+    done = sorted(get_done(idx, member) & set(tasks))
+    return {"member": member, "room_name": room_name, "tasks": tasks, "done": done}
 
 
-@app.post("/checklist/{member}")
-async def update_checklist(member: str, tasks: list[str] = Form(default=[])):
+@app.post("/api/checklist/{member}")
+async def api_checklist_post(member: str, req: UpdateChecklistReq):
     config = load_config(CONFIG_PATH)
     if not any(m.name == member for m in config.members):
-        return redirect("/", f"Unknown member '{member}'", "warning")
+        raise HTTPException(status_code=404, detail=f"Unknown member '{member}'")
     idx = get_day_index(config.start_date, config.today)
     room = next((r for r in config.rooms if r.name == _todays_room(config, member)), None)
     valid = set(room.tasks) if room else set()
-    # Only record tasks that actually belong to today's assigned room.
-    recorded = [t for t in tasks if t in valid]
+    recorded = [t for t in req.tasks if t in valid]
     set_done(idx, member, recorded)
     log.info(
         "checklist.updated",
         extra={"member": member, "room": room.name if room else None, "done": len(recorded)},
     )
-    return redirect(f"/checklist/{member}")
+    return {"member": member, "done": recorded}
 
 
 # ── Shopping lists ────────────────────────────────────────────────────────────
 
-@app.get("/lists")
-async def lists_page(request: Request, msg: str = "", kind: str = "success"):
+@app.get("/api/lists")
+async def api_lists():
+    return [_list_json(sl) for sl in load_lists(LISTS_PATH).lists]
+
+
+@app.post("/api/lists", status_code=201)
+async def api_add_list(req: AddListReq):
     store = load_lists(LISTS_PATH)
-    return templates.TemplateResponse(
-        request=request, name="lists.html",
-        context={"lists": store.lists, "msg": msg, "kind": kind},
-    )
-
-
-@app.post("/lists")
-async def add_list(name: str = Form(...)):
-    store = load_lists(LISTS_PATH)
-    name = name.strip()
-    if name and store.find(name) is None:
-        store.lists.append(ShoppingList(name=name))
-        save_lists(store, LISTS_PATH)
-        log.info("list.added", extra={"list": name})
-        return redirect("/lists", f"Added list '{name}'")
-    return redirect("/lists", "List already exists or name is empty", "warning")
-
-
-@app.post("/lists/delete")
-async def delete_list(name: str = Form(...)):
-    store = load_lists(LISTS_PATH)
-    store.lists = [sl for sl in store.lists if sl.name != name]
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=409, detail="List name is empty")
+    if store.find(name) is not None:
+        raise HTTPException(status_code=409, detail=f"List '{name}' already exists")
+    store.lists.append(ShoppingList(name=name))
     save_lists(store, LISTS_PATH)
-    log.info("list.deleted", extra={"list": name})
-    return redirect("/lists", f"Removed list '{name}'")
+    log.info("list.added", extra={"list": name})
+    return _list_json(store.lists[-1])
 
 
-@app.post("/lists/{list_name}/items")
-async def add_list_item(list_name: str, item: str = Form(...)):
+@app.delete("/api/lists/{list_name}")
+async def api_delete_list(list_name: str):
+    store = load_lists(LISTS_PATH)
+    if store.find(list_name) is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    store.lists = [sl for sl in store.lists if sl.name != list_name]
+    save_lists(store, LISTS_PATH)
+    log.info("list.deleted", extra={"list": list_name})
+    return {"detail": f"Removed list '{list_name}'"}
+
+
+@app.post("/api/lists/{list_name}/items", status_code=201)
+async def api_add_list_item(list_name: str, req: AddListItemReq):
     store = load_lists(LISTS_PATH)
     slist = store.find(list_name)
     if slist is None:
-        return redirect("/lists", f"Unknown list '{list_name}'", "warning")
-    item = item.strip()
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    item = req.item.strip()
     if not item:
-        return redirect("/lists", "Item name is empty", "warning")
+        raise HTTPException(status_code=409, detail="Item name is empty")
     existing = slist.find(item)
     if existing is not None and not existing.done:
-        return redirect("/lists", f"'{item}' is already on {list_name}", "warning")
+        raise HTTPException(status_code=409, detail=f"'{item}' is already on {list_name}")
     if existing is not None:
         # Re-adding something already bought just puts it back on the list.
         existing.done = False
@@ -374,56 +371,64 @@ async def add_list_item(list_name: str, item: str = Form(...)):
         slist.items.append(ListItem(name=item))
     save_lists(store, LISTS_PATH)
     log.info("list_item.added", extra={"list": list_name, "item": item})
-    return redirect("/lists", f"Added '{item}' to {list_name}")
+    return _list_json(slist)
 
 
-@app.post("/lists/{list_name}/items/toggle")
-async def toggle_list_item(list_name: str, item: str = Form(...), done: bool = Form(False)):
-    """Set (not flip) an item's bought state. The checkbox only posts ``done``
-    when checked, so an unchecked submit clears it — idempotent under taps
-    from two phones at once."""
+@app.put("/api/lists/{list_name}/items")
+async def api_set_list_item(list_name: str, req: SetListItemReq):
+    """Set (not flip) an item's bought state, so taps from two phones at once
+    land on the same answer."""
     store = load_lists(LISTS_PATH)
     slist = store.find(list_name)
-    entry = slist.find(item) if slist else None
+    entry = slist.find(req.item) if slist else None
     if entry is None:
-        return redirect("/lists", f"'{item}' is not on {list_name}", "warning")
-    entry.done = done
+        raise HTTPException(status_code=404, detail=f"'{req.item}' is not on {list_name}")
+    entry.done = req.done
     save_lists(store, LISTS_PATH)
-    log.info("list_item.toggled", extra={"list": list_name, "item": item, "done": done})
-    return redirect("/lists")
+    log.info("list_item.toggled", extra={"list": list_name, "item": req.item, "done": req.done})
+    return _list_json(slist)
 
 
-@app.post("/lists/{list_name}/items/delete")
-async def delete_list_item(list_name: str, item: str = Form(...)):
-    store = load_lists(LISTS_PATH)
-    slist = store.find(list_name)
-    if slist is not None:
-        slist.items = [i for i in slist.items if i.name != item]
-        save_lists(store, LISTS_PATH)
-        log.info("list_item.deleted", extra={"list": list_name, "item": item})
-    return redirect("/lists", f"Removed '{item}'")
-
-
-@app.post("/lists/{list_name}/clear")
-async def clear_bought_items(list_name: str):
+# `:path` so an item like "1/2 gallon milk" still routes
+@app.delete("/api/lists/{list_name}/items/{item:path}")
+async def api_delete_list_item(list_name: str, item: str):
     store = load_lists(LISTS_PATH)
     slist = store.find(list_name)
     if slist is None:
-        return redirect("/lists", f"Unknown list '{list_name}'", "warning")
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    slist.items = [i for i in slist.items if i.name != item]
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.deleted", extra={"list": list_name, "item": item})
+    return _list_json(slist)
+
+
+@app.post("/api/lists/{list_name}/clear")
+async def api_clear_bought(list_name: str):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
     removed = slist.bought
     slist.items = [i for i in slist.items if not i.done]
     save_lists(store, LISTS_PATH)
     log.info("list.cleared", extra={"list": list_name, "removed": removed})
-    return redirect("/lists", f"Cleared {removed} bought item{'s' if removed != 1 else ''} from {list_name}")
+    return {**_list_json(slist), "removed": removed}
 
 
-# ── JSON API ──────────────────────────────────────────────────────────────────
-
-@app.get("/api/schedule")
-async def api_schedule():
+@app.post("/api/notify/today")
+async def api_notify_today():
     config = load_config(CONFIG_PATH)
-    schedule = get_schedule(config, days=14)
-    return [
-        {"date": str(day["date"]), "assignments": day["assignments"]}
-        for day in schedule
-    ]
+    results = await notify_today(config)
+    sent = [n for n, ok in results.items() if ok]
+    failed = [n for n, ok in results.items() if not ok]
+    return {"sent": sent, "failed": failed}
+
+
+# ── SPA catch-all (registered last) ──────────────────────────────────────────
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    index = DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return JSONResponse({"detail": "Frontend not built"}, status_code=404)

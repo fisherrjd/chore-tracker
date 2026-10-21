@@ -1,0 +1,7 @@
+@import "tailwindcss";
+/* shared tokens, theme presets, base styles and utilities (card-hover,
+   md-prose, rise-in, page transitions) — edit them in the ui repo, then
+   `ui-update` here. */
+@import "@fisherrjd/ui/styles.css";
+
+/* app-only styles below */
