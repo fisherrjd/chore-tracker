@@ -8,6 +8,7 @@ import { PageHeader } from '@fisherrjd/ui/layout'
 import { Separator } from '@fisherrjd/ui/separator'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
 import { ConfirmDialog, EmptyState } from '@fisherrjd/ui/states'
+import { swatch } from '@fisherrjd/ui/theme'
 import { PlusIcon, XIcon } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
@@ -127,17 +128,18 @@ onMounted(load)
     <EmptyState v-else-if="!lists.length" title="No lists yet" description="Add one above." />
 
     <div v-else class="grid items-start gap-4 sm:grid-cols-2">
+      <!-- each list gets its own color: the header band, and (via --primary) its checkboxes -->
       <Card
         v-for="(list, i) in lists"
         :key="list.name"
-        class="rise-in gap-4 py-5"
-        :style="{ animationDelay: `${Math.min(i, 8) * 40}ms` }"
+        class="rise-in gap-0 overflow-hidden p-0"
+        :style="[{ animationDelay: `${Math.min(i, 8) * 40}ms` }, swatch(i, { primary: true })]"
       >
-        <CardHeader class="pb-0">
+        <CardHeader class="bg-swatch px-5 py-3 text-swatch-foreground">
           <div class="flex items-center justify-between gap-2">
-            <CardTitle class="flex items-center gap-2 text-base">
+            <CardTitle class="flex items-center gap-2 text-lg">
               {{ list.name }}
-              <Badge v-if="list.items.length" :variant="list.remaining ? 'secondary' : 'default'">
+              <Badge v-if="list.items.length" variant="outline" class="border-current bg-background/25 text-swatch-foreground">
                 {{ list.remaining ? `${list.remaining} to buy` : 'all bought' }}
               </Badge>
             </CardTitle>
@@ -148,11 +150,11 @@ onMounted(load)
               confirm-label="Remove list"
               @confirm="deleteList(list.name)"
             >
-              <Button variant="ghost" size="xs" class="text-destructive">Remove</Button>
+              <Button variant="ghost" size="xs" class="text-swatch-foreground hover:bg-background/25">Remove</Button>
             </ConfirmDialog>
           </div>
         </CardHeader>
-        <CardContent class="space-y-3">
+        <CardContent class="space-y-3 px-5 py-4">
           <div v-if="list.items.length" class="space-y-1">
             <div
               v-for="item in list.items"

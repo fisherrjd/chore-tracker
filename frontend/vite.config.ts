@@ -11,14 +11,15 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
-    // Jade's theme, lagoon + block: teal and warm yellow, chunky outlines and
-    // hard shadows, Cascadia Code headings. Pinned light (no toggle, nothing
-    // saved); the dev-only /styleguide's theme lab can try other looks.
+    // Jade's theme, fun mode: coral + sunshine on cream (the chart colors add
+    // mint and sky, one per household member), round Fredoka/Nunito type,
+    // chunky rounded blocks. Pinned light (no toggle, nothing saved); the
+    // dev-only /styleguide's theme lab can try other looks.
     ui({
-      palette: 'lagoon',
-      fonts: { heading: 'Cascadia Code', mono: 'Cascadia Code' },
+      colors: { primary: '#ff6f59', accent: '#ffc53d', neutral: '#3b2a1e', danger: '#d93a3a' },
+      fonts: { heading: 'Fredoka', body: 'Nunito', mono: 'Cascadia Code' },
       style: 'block',
-      radius: 0,
+      radius: 14,
       defaultMode: 'light',
       lockMode: true,
     }),

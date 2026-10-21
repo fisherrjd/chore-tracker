@@ -4,6 +4,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@fisherrjd/ui/card
 import { PageHeader } from '@fisherrjd/ui/layout'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
 import { EmptyState } from '@fisherrjd/ui/states'
+import { swatch } from '@fisherrjd/ui/theme'
 import {
   Table,
   TableBody,
@@ -17,7 +18,6 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import ProgressMeter from '@/components/dashboard/ProgressMeter.vue'
-import UserAvatar from '@/components/dashboard/UserAvatar.vue'
 import { api } from '@/lib/api'
 import type { HomeData } from '@/types'
 
@@ -108,25 +108,33 @@ onMounted(load)
           class="rise-in block h-full"
           :style="{ animationDelay: `${i * 60}ms` }"
         >
-          <Card class="card-hover h-full gap-3 p-5">
-            <div class="flex items-center gap-3">
-              <UserAvatar :name="String(person)" size="lg" />
+          <!-- each member gets their own color: the band, and (via --primary) the progress bar -->
+          <Card class="card-hover h-full gap-0 overflow-hidden p-0" :style="swatch(i, { primary: true })">
+            <div class="flex items-center gap-3 bg-swatch px-5 py-4 text-swatch-foreground">
+              <span
+                class="grid size-12 shrink-0 place-items-center rounded-full border-2 border-current bg-background/25 font-heading text-xl font-semibold"
+                aria-hidden="true"
+              >
+                {{ String(person).slice(0, 1).toUpperCase() }}
+              </span>
               <div class="min-w-0">
-                <CardTitle class="truncate text-base">{{ person }}</CardTitle>
-                <CardDescription>{{ room }}</CardDescription>
+                <CardTitle class="truncate text-xl">{{ person }}</CardTitle>
+                <p class="truncate font-semibold opacity-85">{{ room }}</p>
               </div>
             </div>
-            <ProgressMeter
-              v-if="data.done_map[person]"
-              label="Progress"
-              :value="
-                data.done_map[person]!.total
-                  ? (data.done_map[person]!.done / data.done_map[person]!.total) * 100
-                  : 0
-              "
-              :detail="`${data.done_map[person]!.done}/${data.done_map[person]!.total} done`"
-            />
-            <p v-else class="text-sm text-muted-foreground">No tasks</p>
+            <div class="px-5 py-4">
+              <ProgressMeter
+                v-if="data.done_map[person]"
+                label="Progress"
+                :value="
+                  data.done_map[person]!.total
+                    ? (data.done_map[person]!.done / data.done_map[person]!.total) * 100
+                    : 0
+                "
+                :detail="`${data.done_map[person]!.done}/${data.done_map[person]!.total} done`"
+              />
+              <p v-else class="text-sm text-muted-foreground">No tasks</p>
+            </div>
           </Card>
         </RouterLink>
       </div>
@@ -141,18 +149,33 @@ onMounted(load)
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead v-for="person in people" :key="person">{{ person }}</TableHead>
+                <TableHead v-for="(person, p) in people" :key="person">
+                  <span
+                    class="inline-block rounded-full bg-swatch px-2.5 py-0.5 font-heading font-semibold text-swatch-foreground"
+                    :style="swatch(p)"
+                  >
+                    {{ person }}
+                  </span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow
                 v-for="(day, i) in data.schedule"
                 :key="day.date"
-                :class="i === 0 ? 'bg-accent/40 font-medium' : ''"
+                :class="i === 0 ? 'bg-accent-fill/30 font-semibold' : ''"
               >
-                <TableCell class="whitespace-nowrap">{{ formatDate(day.date) }}</TableCell>
-                <TableCell v-for="person in people" :key="person">
-                  {{ day.assignments[person] ?? '—' }}
+                <TableCell class="whitespace-nowrap">{{ i === 0 ? 'Today' : formatDate(day.date) }}</TableCell>
+                <TableCell v-for="(person, p) in people" :key="person">
+                  <!-- rooms tinted with their person's color, so each column reads as one -->
+                  <span
+                    v-if="day.assignments[person]"
+                    class="inline-block rounded-md bg-swatch/20 px-2 py-0.5"
+                    :style="swatch(p)"
+                  >
+                    {{ day.assignments[person] }}
+                  </span>
+                  <span v-else class="text-muted-foreground">—</span>
                 </TableCell>
               </TableRow>
             </TableBody>
