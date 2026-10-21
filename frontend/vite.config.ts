@@ -11,12 +11,13 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
-    // Jade's theme, fun mode: coral + sunshine on cream (the chart colors add
-    // mint and sky, one per household member), round Fredoka/Nunito type,
-    // chunky rounded blocks. Pinned light (no toggle, nothing saved); the
-    // dev-only /styleguide's theme lab can try other looks.
+    // Jade's theme, fun mode: purple + orange on cream — members take colors
+    // in roster order, so Jade is purple and Hannah orange (mint and lime for
+    // anyone after). Round Fredoka/Nunito type, chunky rounded blocks. Pinned
+    // light (no toggle, nothing saved); the dev-only /styleguide's theme lab
+    // can try other looks.
     ui({
-      colors: { primary: '#ff6f59', accent: '#ffc53d', neutral: '#3b2a1e', danger: '#d93a3a' },
+      colors: { primary: '#8b5cf6', accent: '#ff8a3d', neutral: '#3b2a1e', danger: '#d93a3a' },
       fonts: { heading: 'Fredoka', body: 'Nunito', mono: 'Cascadia Code' },
       style: 'block',
       radius: 14,
