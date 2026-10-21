@@ -43,3 +43,7 @@ OPS.md
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# local shopping-list data created by `python main.py` (prod uses /data/lists.yaml)
+/lists.yaml
+*.yaml.tmp

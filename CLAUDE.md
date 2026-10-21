@@ -35,6 +35,7 @@ Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/ap
 - **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`. `dashboard_url` is used by `notifier.py` for the `Click` deep-link header.
 - **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`.
 - **`checks.py`** — in-memory, process-local checklist state keyed by day_index. Intentionally **not** persisted.
+- **`lists.py`** — household shopping lists (named lists like "Costco" or "Target", each holding items with a `done` flag), persisted to their own YAML file (`lists.yaml` beside the config, or `CHORE_LISTS`). Pure load/save + small Pydantic models; the `/api/lists` routes in `main.py` do the mutations.
 - **`logging_config.py`** — logfmt formatter to stdout. App code emits structured events via `log.info("event.name", extra={...})`.
 
 ### Frontend (`frontend/`)
@@ -83,11 +84,22 @@ All mutations accept JSON bodies and return JSON. Errors use `{"detail": "..."}`
 | GET | `/api/checklist/{member}` | today's checklist + done list |
 | POST | `/api/checklist/{member}` | record completed tasks |
 | POST | `/api/notify/today` | fire notifications now |
+| GET/POST | `/api/lists` | shopping lists / add list |
+| DELETE | `/api/lists/{name}` | remove list |
+| POST | `/api/lists/{list}/items` | add item (re-adding a bought one puts it back) |
+| PUT | `/api/lists/{list}/items` | set an item's bought state (`{item, done}`) |
+| DELETE | `/api/lists/{list}/items/{item}` | remove item |
+| POST | `/api/lists/{list}/clear` | drop bought items |
 
-### Two state stores, by design
+### Three state stores, by design
 
 1. **Config (durable)** — rooms, members, notify times. Persisted to `config.yaml`. In production this is a mounted file at `/data/config.yaml` (env `CHORE_CONFIG`).
 2. **Checklist completion (ephemeral)** — `checks._state`, in-process, daily.
+3. **Shopping lists (durable, not config)** — `lists.yaml` beside the config
+   file by default (override with env `CHORE_LISTS`). Kept separate so
+   shopping churn never rewrites `config.yaml`. A missing file seeds one empty
+   "Groceries" list in memory; an existing empty file stays empty. Every
+   request re-reads it via `load_lists`; writes are atomic like config.
 
 ### SPA serving
 

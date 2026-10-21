@@ -269,3 +269,135 @@ def test_spa_fallback_on_spa_path(client):
     r = client.get("/checklist/Alice")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
+
+
+# ── /api/lists ────────────────────────────────────────────────────────────────
+
+def _lists():
+    from chore_tracker.lists import load_lists
+    from tests.helpers import lists_path
+    return {sl.name: sl for sl in load_lists(lists_path()).lists}
+
+
+def test_api_lists_seeds_default_list(client):
+    r = client.get("/api/lists")
+    assert r.status_code == 200
+    assert r.json() == [{"name": "Groceries", "items": [], "remaining": 0, "bought": 0}]
+
+
+def test_api_add_list_persists_and_rejects_duplicate(client):
+    r = client.post("/api/lists", json={"name": "Costco"})
+    assert r.status_code == 201 and r.json()["name"] == "Costco"
+    assert "Costco" in _lists()
+
+    r = client.post("/api/lists", json={"name": "Costco"})
+    assert r.status_code == 409
+    assert list(_lists()) == ["Groceries", "Costco"]
+
+
+def test_api_add_list_rejects_empty_name(client):
+    r = client.post("/api/lists", json={"name": "   "})
+    assert r.status_code == 409
+
+
+def test_api_add_list_item_persists_in_order(client):
+    client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    r = client.post("/api/lists/Groceries/items", json={"item": "Eggs"})
+    assert r.status_code == 201
+    assert [i["name"] for i in r.json()["items"]] == ["Milk", "Eggs"]
+    assert [i.name for i in _lists()["Groceries"].items] == ["Milk", "Eggs"]
+
+
+def test_api_add_duplicate_unbought_item_conflicts(client):
+    client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    r = client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    assert r.status_code == 409
+    assert len(_lists()["Groceries"].items) == 1
+
+
+def test_api_readding_bought_item_puts_it_back(client):
+    client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    client.put("/api/lists/Groceries/items", json={"item": "Milk", "done": True})
+    assert _lists()["Groceries"].find("Milk").done is True
+
+    r = client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    assert r.status_code == 201
+    assert _lists()["Groceries"].find("Milk").done is False
+    assert len(_lists()["Groceries"].items) == 1
+
+
+def test_api_set_item_done_is_idempotent(client):
+    client.post("/api/lists/Groceries/items", json={"item": "Bread"})
+    for _ in range(2):  # two phones tapping at once land on the same state
+        r = client.put("/api/lists/Groceries/items", json={"item": "Bread", "done": True})
+        assert r.status_code == 200
+    assert r.json()["bought"] == 1 and r.json()["remaining"] == 0
+
+    r = client.put("/api/lists/Groceries/items", json={"item": "Bread", "done": False})
+    assert r.json()["remaining"] == 1
+
+
+def test_api_set_unknown_item_404s(client):
+    r = client.put("/api/lists/Groceries/items", json={"item": "Ghost", "done": True})
+    assert r.status_code == 404
+
+
+def test_api_delete_list_item(client):
+    client.post("/api/lists/Groceries/items", json={"item": "Milk"})
+    client.post("/api/lists/Groceries/items", json={"item": "Eggs"})
+    r = client.delete("/api/lists/Groceries/items/Milk")
+    assert r.status_code == 200
+    assert [i.name for i in _lists()["Groceries"].items] == ["Eggs"]
+
+
+def test_api_delete_item_with_a_slash(client):
+    client.post("/api/lists/Groceries/items", json={"item": "1/2 gallon milk"})
+    r = client.delete("/api/lists/Groceries/items/1/2 gallon milk")
+    assert r.status_code == 200
+    assert _lists()["Groceries"].items == []
+
+
+def test_api_clear_bought_removes_only_done_items(client):
+    for name in ("Milk", "Eggs", "Bread"):
+        client.post("/api/lists/Groceries/items", json={"item": name})
+    client.put("/api/lists/Groceries/items", json={"item": "Milk", "done": True})
+    client.put("/api/lists/Groceries/items", json={"item": "Bread", "done": True})
+
+    r = client.post("/api/lists/Groceries/clear")
+    assert r.status_code == 200 and r.json()["removed"] == 2
+    assert [i.name for i in _lists()["Groceries"].items] == ["Eggs"]
+
+
+def test_api_delete_list(client):
+    client.post("/api/lists", json={"name": "Costco"})
+    r = client.delete("/api/lists/Groceries")
+    assert r.status_code == 200
+    assert list(_lists()) == ["Costco"]
+
+
+def test_api_deleting_last_list_stays_empty_across_reloads(client):
+    client.delete("/api/lists/Groceries")
+    assert client.get("/api/lists").json() == []
+    assert client.get("/api/lists").json() == []
+
+
+def test_api_unknown_list_routes_404(client):
+    assert client.delete("/api/lists/Nope").status_code == 404
+    assert client.post("/api/lists/Nope/items", json={"item": "x"}).status_code == 404
+    assert client.put("/api/lists/Nope/items", json={"item": "x", "done": True}).status_code == 404
+    assert client.delete("/api/lists/Nope/items/x").status_code == 404
+    assert client.post("/api/lists/Nope/clear").status_code == 404
+
+
+def test_api_list_writes_never_touch_config(client):
+    before = config_path().read_text()
+    client.post("/api/lists", json={"name": "Costco"})
+    client.post("/api/lists/Costco/items", json={"item": "Paper towels"})
+    client.put("/api/lists/Costco/items", json={"item": "Paper towels", "done": True})
+    assert config_path().read_text() == before
+
+
+def test_spa_fallback_serves_lists_path(client):
+    r = client.get("/lists")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]

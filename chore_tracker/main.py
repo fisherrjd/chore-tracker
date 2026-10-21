@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
+from .lists import ListItem, ShoppingList, load_lists, save_lists
 from .logging_config import configure_logging
 from .notifier import notify_today
 from .scheduler import get_assignment, get_day_index, get_schedule
@@ -18,6 +19,8 @@ from .scheduler import get_assignment, get_day_index, get_schedule
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
 CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
 DIST = BASE_DIR / "frontend" / "dist"
+# Shopping lists live beside the config by default so they share its durable mount.
+LISTS_PATH = Path(os.environ.get("CHORE_LISTS", CONFIG_PATH.with_name("lists.yaml")))
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +84,16 @@ class AddNotifyTimeReq(BaseModel):
 class UpdateChecklistReq(BaseModel):
     tasks: list[str]
 
+class AddListReq(BaseModel):
+    name: str
+
+class AddListItemReq(BaseModel):
+    item: str
+
+class SetListItemReq(BaseModel):
+    item: str
+    done: bool
+
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -105,6 +118,15 @@ def _save_notify_times(config: AppConfig, times: list[str]) -> AppConfig | None:
 def _member_json(m: Member, ntfy_base_url: str) -> dict:
     topic = m.name.lower()
     return {"name": m.name, "topic": topic, "ntfy_url": f"{ntfy_base_url.rstrip('/')}/{topic}"}
+
+
+def _list_json(sl: ShoppingList) -> dict:
+    return {
+        "name": sl.name,
+        "items": [{"name": i.name, "done": i.done} for i in sl.items],
+        "remaining": sl.remaining,
+        "bought": sl.bought,
+    }
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────
@@ -296,6 +318,101 @@ async def api_checklist_post(member: str, req: UpdateChecklistReq):
         extra={"member": member, "room": room.name if room else None, "done": len(recorded)},
     )
     return {"member": member, "done": recorded}
+
+
+# ── Shopping lists ────────────────────────────────────────────────────────────
+
+@app.get("/api/lists")
+async def api_lists():
+    return [_list_json(sl) for sl in load_lists(LISTS_PATH).lists]
+
+
+@app.post("/api/lists", status_code=201)
+async def api_add_list(req: AddListReq):
+    store = load_lists(LISTS_PATH)
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=409, detail="List name is empty")
+    if store.find(name) is not None:
+        raise HTTPException(status_code=409, detail=f"List '{name}' already exists")
+    store.lists.append(ShoppingList(name=name))
+    save_lists(store, LISTS_PATH)
+    log.info("list.added", extra={"list": name})
+    return _list_json(store.lists[-1])
+
+
+@app.delete("/api/lists/{list_name}")
+async def api_delete_list(list_name: str):
+    store = load_lists(LISTS_PATH)
+    if store.find(list_name) is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    store.lists = [sl for sl in store.lists if sl.name != list_name]
+    save_lists(store, LISTS_PATH)
+    log.info("list.deleted", extra={"list": list_name})
+    return {"detail": f"Removed list '{list_name}'"}
+
+
+@app.post("/api/lists/{list_name}/items", status_code=201)
+async def api_add_list_item(list_name: str, req: AddListItemReq):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    item = req.item.strip()
+    if not item:
+        raise HTTPException(status_code=409, detail="Item name is empty")
+    existing = slist.find(item)
+    if existing is not None and not existing.done:
+        raise HTTPException(status_code=409, detail=f"'{item}' is already on {list_name}")
+    if existing is not None:
+        # Re-adding something already bought just puts it back on the list.
+        existing.done = False
+    else:
+        slist.items.append(ListItem(name=item))
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.added", extra={"list": list_name, "item": item})
+    return _list_json(slist)
+
+
+@app.put("/api/lists/{list_name}/items")
+async def api_set_list_item(list_name: str, req: SetListItemReq):
+    """Set (not flip) an item's bought state, so taps from two phones at once
+    land on the same answer."""
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    entry = slist.find(req.item) if slist else None
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"'{req.item}' is not on {list_name}")
+    entry.done = req.done
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.toggled", extra={"list": list_name, "item": req.item, "done": req.done})
+    return _list_json(slist)
+
+
+# `:path` so an item like "1/2 gallon milk" still routes
+@app.delete("/api/lists/{list_name}/items/{item:path}")
+async def api_delete_list_item(list_name: str, item: str):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    slist.items = [i for i in slist.items if i.name != item]
+    save_lists(store, LISTS_PATH)
+    log.info("list_item.deleted", extra={"list": list_name, "item": item})
+    return _list_json(slist)
+
+
+@app.post("/api/lists/{list_name}/clear")
+async def api_clear_bought(list_name: str):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    removed = slist.bought
+    slist.items = [i for i in slist.items if not i.done]
+    save_lists(store, LISTS_PATH)
+    log.info("list.cleared", extra={"list": list_name, "removed": removed})
+    return {**_list_json(slist), "removed": removed}
 
 
 @app.post("/api/notify/today")

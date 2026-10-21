@@ -24,6 +24,16 @@ def write_config(data: dict) -> None:
     config_path().write_text(yaml.dump(data, sort_keys=False))
 
 
+def lists_path() -> Path:
+    # Mirrors the app's default: lists.yaml beside the config file.
+    return config_path().with_name("lists.yaml")
+
+
+def write_lists(data: dict) -> None:
+    """Write a raw shopping-lists dict to the temp file the app reads."""
+    lists_path().write_text(yaml.dump(data, sort_keys=False))
+
+
 def default_config(start: date | None = None) -> dict:
     """A known-good config: 2 members, 4 rooms (half cycle = 2).
 
