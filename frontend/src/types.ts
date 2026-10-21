@@ -48,3 +48,15 @@ export interface NotifyResult {
   sent: string[]
   failed: string[]
 }
+
+export interface ListItem {
+  name: string
+  done: boolean
+}
+
+export interface ShoppingList {
+  name: string
+  items: ListItem[]
+  remaining: number
+  bought: number
+}

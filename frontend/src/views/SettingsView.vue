@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { PageHeader } from '@fisherrjd/ui/layout'
 import { onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import PageHeader from '@/components/PageHeader.vue'
 import FormField from '@/components/forms/FormField.vue'
 import SettingsSection from '@/components/forms/SettingsSection.vue'
 import TagInput from '@/components/forms/TagInput.vue'

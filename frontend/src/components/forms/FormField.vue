@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Label } from '@fisherrjd/ui/label'
 import { useId } from 'vue'
-import { Label } from '@/components/ui/label'
 
 // label + control + hint/error in one. bind the slotted control to the
 // provided id so the label focuses it:

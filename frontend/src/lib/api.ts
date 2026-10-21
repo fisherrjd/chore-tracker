@@ -2,10 +2,11 @@ import type {
   ChecklistData,
   HomeData,
   MembersData,
+  Member,
   NotifyResult,
   Room,
-  Member,
   SettingsData,
+  ShoppingList,
 } from '@/types'
 
 export class ApiError extends Error {
@@ -76,4 +77,29 @@ export const api = {
     }),
 
   notifyToday: () => req<NotifyResult>('/api/notify/today', { method: 'POST' }),
+
+  lists: () => req<ShoppingList[]>('/api/lists'),
+  addList: (name: string) =>
+    req<ShoppingList>('/api/lists', { method: 'POST', body: JSON.stringify({ name }) }),
+  deleteList: (name: string) =>
+    req<{ detail: string }>(`/api/lists/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  addListItem: (list: string, item: string) =>
+    req<ShoppingList>(`/api/lists/${encodeURIComponent(list)}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ item }),
+    }),
+  setListItem: (list: string, item: string, done: boolean) =>
+    req<ShoppingList>(`/api/lists/${encodeURIComponent(list)}/items`, {
+      method: 'PUT',
+      body: JSON.stringify({ item, done }),
+    }),
+  deleteListItem: (list: string, item: string) =>
+    req<ShoppingList>(
+      `/api/lists/${encodeURIComponent(list)}/items/${encodeURIComponent(item)}`,
+      { method: 'DELETE' },
+    ),
+  clearBought: (list: string) =>
+    req<ShoppingList & { removed: number }>(`/api/lists/${encodeURIComponent(list)}/clear`, {
+      method: 'POST',
+    }),
 }

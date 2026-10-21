@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { Checkbox } from '@fisherrjd/ui/checkbox'
+import { Label } from '@fisherrjd/ui/label'
 import { computed, useId } from 'vue'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 
 // checkbox list with strike-through and a progress count, generalized
 // from chore-tracker. the parent owns `done` (v-model:done), so

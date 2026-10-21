@@ -1,15 +1,9 @@
 <script setup lang="ts">
-import { SendIcon } from '@lucide/vue'
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { toast } from 'vue-sonner'
-import PageHeader from '@/components/PageHeader.vue'
-import ProgressMeter from '@/components/dashboard/ProgressMeter.vue'
-import UserAvatar from '@/components/dashboard/UserAvatar.vue'
-import EmptyState from '@/components/states/EmptyState.vue'
-import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@fisherrjd/ui/button'
+import { Card, CardDescription, CardHeader, CardTitle } from '@fisherrjd/ui/card'
+import { PageHeader } from '@fisherrjd/ui/layout'
+import { Skeleton } from '@fisherrjd/ui/skeleton'
+import { EmptyState } from '@fisherrjd/ui/states'
 import {
   Table,
   TableBody,
@@ -17,7 +11,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@fisherrjd/ui/table'
+import { SendIcon } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { toast } from 'vue-sonner'
+import ProgressMeter from '@/components/dashboard/ProgressMeter.vue'
+import UserAvatar from '@/components/dashboard/UserAvatar.vue'
 import { api } from '@/lib/api'
 import type { HomeData } from '@/types'
 

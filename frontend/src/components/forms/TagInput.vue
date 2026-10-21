@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { Badge } from '@fisherrjd/ui/badge'
+import { Button } from '@fisherrjd/ui/button'
+import { Input } from '@fisherrjd/ui/input'
 import { PlusIcon, XIcon } from '@lucide/vue'
 import { ref } from 'vue'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
 // removable-chip editor (tags, emails, times), generalized from
 // chore-tracker's notification-times UI. v-model is a string[];

@@ -1,9 +1,4 @@
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+export { cn } from '@fisherrjd/ui/utils'
 
 // crypto.randomUUID only exists in secure contexts — plain-http access
 // (e.g. over the tailnet) needs the getRandomValues fallback.

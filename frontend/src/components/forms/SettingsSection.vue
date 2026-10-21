@@ -6,7 +6,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
+} from '@fisherrjd/ui/card'
 
 // one titled card per settings concern; put save/cancel in #footer.
 defineProps<{

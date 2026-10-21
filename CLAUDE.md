@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-household chore tracker: a FastAPI JSON API server that rotates rooms among members on a daily round-robin and pushes [ntfy](https://ntfy.sh) notifications. The frontend is a Vue 3 + shadcn-vue SPA served by FastAPI. Deployed as a single-replica container on k8s (see `OPS.md`).
+A single-household chore tracker: a FastAPI JSON API server that rotates rooms among members on a daily round-robin and pushes [ntfy](https://ntfy.sh) notifications. The frontend is a Vue 3 SPA on Jade's theme (`@fisherrjd/ui`) served by FastAPI. Deployed as a single-replica container on k8s (see `OPS.md`).
 
 ## Commands
 
@@ -15,12 +15,13 @@ The dev shell is provided by Nix + direnv (`.envrc` → `use nix`), which puts P
 pytest                       # full suite (config in pyproject.toml: -q, testpaths=tests)
 pytest tests/test_web.py     # one file
 pytest tests/test_scheduler.py::test_name   # one test
-python main.py               # run backend on http://0.0.0.0:3030 (reload=True)
+python main.py               # run backend on http://0.0.0.0:3030 (reload=True; CHORE_PORT to move it)
 
-# Frontend (run from repo root or frontend/)
-bun install                  # install / sync deps (from frontend/)
-bun run dev                  # Vite dev server on :5173, proxies /api → :3030
+# Frontend (from frontend/)
+bun install                  # install / sync deps
+bun run dev                  # Vite dev server on :3031, proxies /api → :3030 (VITE_BACKEND to move it)
 bun run build                # production build → frontend/dist/
+ui-update                    # devshell: pull the latest @fisherrjd/ui, typecheck; commit frontend/bun.lock
 ```
 
 There is no linter/formatter configured in this repo.
@@ -40,29 +41,35 @@ Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/ap
 
 ### Frontend (`frontend/`)
 
-Vue 3 SPA: `<script setup>` + TypeScript, Vite, Tailwind CSS v4, shadcn-vue (Reka UI), vue-router (history mode).
+Vue 3 SPA: `<script setup>` + TypeScript, Vite, Tailwind CSS v4, vue-router (history mode), built on
+Jade's theme: `@fisherrjd/ui` (github:fisherrjd/ui, pinned in `bun.lock`) supplies the app frame
+(`AppShell`, `PageHeader`), the shadcn-vue primitives, the empty/error/confirm states and the theme.
+The look is the `ui({ … })` call in `vite.config.ts` (lagoon palette, block style, Cascadia Code,
+pinned light). Use theme tokens (`text-success`, `bg-warning`, …), never Tailwind palette colors.
 
 ```
 frontend/
-  package.json            bun deps
-  vite.config.ts          Vite + @tailwindcss/vite + /api proxy
+  package.json            bun deps (@fisherrjd/ui as a git dependency)
+  vite.config.ts          Vite + @tailwindcss/vite + ui() theme + /api proxy
   tsconfig*.json
-  components.json         shadcn-vue config
   src/
-    main.ts  App.vue
-    router.ts             vue-router, history mode, 5 routes
+    main.ts  App.vue      App.vue = AppShell + nav
+    router.ts             vue-router, history mode; /styleguide is dev-only
     lib/api.ts            typed fetch client (all /api/* calls)
-    lib/utils.ts          cn() helper
-    types.ts              TS types mirroring config.py models
-    assets/index.css      Tailwind + CSS variable theme (neutral)
-    components/ui/        shadcn-vue components (button, card, ...)
+    lib/utils.ts          cn() (from @fisherrjd/ui) + uid()
+    types.ts              TS types mirroring the backend models
+    assets/index.css      tailwind + @fisherrjd/ui/styles.css (+ app-only CSS)
+    components/           domain patterns from app-template (checklist, forms, …)
     views/
       HomeView.vue        today cards + 14-day schedule + notify button
+      ListsView.vue       shopping lists: items, bought toggles, clear bought
       RoomsView.vue       rooms + tasks CRUD
       MembersView.vue     members CRUD + ntfy links
       SettingsView.vue    notify-times CRUD
       ChecklistView.vue   /checklist/:member (debounced auto-save)
 ```
+
+`/styleguide` (the theme lab) exists only under `bun run dev`; builds never include it.
 
 ### JSON API (`/api/*`)
 
@@ -117,7 +124,7 @@ Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replic
 
 - **Path resolution:** `CHORE_BASE` and `CHORE_CONFIG` are read at *import time* in `main.py`. Tests set both in `tests/conftest.py` before importing the app.
 - **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)` without a `with` block so the scheduler never starts during tests.
-- **SPA in tests:** `frontend/dist/` is built and present; the catch-all serves `index.html` (200). All API tests use `/api/*` routes explicitly.
+- **SPA in tests:** `tests/conftest.py` points `CHORE_BASE` at a temp dir with a stub `frontend/dist/index.html`, so the catch-all is tested without a frontend build. All API tests use `/api/*` routes explicitly.
 - **Test helpers (`tests/helpers.py`):** `default_config()` seeds a known-good config (2 members: Alice/Bob, 4 rooms, `America/Denver` timezone, today as `start_date` so `day_index = 0`). `write_config()` writes a raw dict to the temp config file. Both are called by the `autouse` `fresh_state` fixture — every test starts from this baseline.
 - **`goals/`** — planning/design markdown files, not code.
 - **Config back-compat:** `AppConfig` migrates the legacy single `notify_time` string to `notify_times`.

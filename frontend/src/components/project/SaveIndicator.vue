@@ -4,8 +4,8 @@
 defineProps<{ state: 'saved' | 'saving' | 'error' }>()
 
 const DOT = {
-  saved: 'bg-emerald-500',
-  saving: 'bg-amber-500 animate-pulse',
+  saved: 'bg-success',
+  saving: 'bg-warning animate-pulse',
   error: 'bg-destructive',
 }
 
