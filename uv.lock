@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 
 [[package]]
@@ -46,7 +46,7 @@ wheels = [
 
 [[package]]
 name = "chore-tracker"
-version = "0.3.5"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
