@@ -15,7 +15,8 @@ const nav: NavSection[] = [
   {
     label: 'Household',
     links: [
-      { to: '/', label: 'Today', icon: CalendarCheckIcon },
+      // a member's checklist is reached from Today
+      { to: '/', label: 'Today', icon: CalendarCheckIcon, match: ['/checklist'] },
       { to: '/lists', label: 'Lists', icon: ShoppingCartIcon },
     ],
   },
