@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@fisherrjd/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@fisherrjd/ui/card'
+import { ProgressMeter } from '@fisherrjd/ui/dashboard'
 import { PageHeader } from '@fisherrjd/ui/layout'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
 import { EmptyState } from '@fisherrjd/ui/states'
@@ -17,7 +18,6 @@ import { SendIcon } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
-import ProgressMeter from '@/components/dashboard/ProgressMeter.vue'
 import { api } from '@/lib/api'
 import type { HomeData } from '@/types'
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@fisherrjd/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@fisherrjd/ui/card'
+import { UserAvatar } from '@fisherrjd/ui/dashboard'
 import { Input } from '@fisherrjd/ui/input'
 import { PageHeader } from '@fisherrjd/ui/layout'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
@@ -8,7 +9,6 @@ import { ConfirmDialog, EmptyState } from '@fisherrjd/ui/states'
 import { ExternalLinkIcon, PlusIcon } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import UserAvatar from '@/components/dashboard/UserAvatar.vue'
 import { api, ApiError } from '@/lib/api'
 import type { Member } from '@/types'
 
