@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import quote
 
 import httpx2
@@ -7,6 +8,11 @@ from .config import AppConfig, Member
 from .scheduler import get_assignment, get_day_index
 
 log = logging.getLogger(__name__)
+
+
+def notify_disabled() -> bool:
+    """True when CHORE_NOTIFY=off: nothing is scheduled and nothing is POSTed."""
+    return os.environ.get("CHORE_NOTIFY", "").strip().lower() == "off"
 
 
 async def send_notification(
@@ -44,6 +50,9 @@ async def send_notification(
 
 
 async def notify_today(config: AppConfig, *, trigger: str = "manual") -> dict[str, bool]:
+    if notify_disabled():
+        log.info("notify.disabled", extra={"trigger": trigger})
+        return {}
     idx = get_day_index(config.start_date, config.today)
     room_names = [r.name for r in config.rooms]
     assignments = get_assignment(idx, room_names, [m.name for m in config.members])

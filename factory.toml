@@ -1,0 +1,33 @@
+# How the factory (factory.jade.rip) checks, serves, previews and promotes this
+# repo. It reads this file from main only, never from a PR branch, so a change
+# here takes effect once it merges.
+repo = "fisherrjd/chore-tracker"
+kind = "repo-change"
+toolchain = "default.nix"
+# each check runs with bash -c from the repo root; `bun run build` typechecks too
+checks = ["cd frontend && bun install --frozen-lockfile", "cd frontend && bun run build", "pytest"]
+# /work is read-only while serving: the checks already built frontend/dist. The run's
+# data dir starts empty, and a missing config file starts the app with no rooms or
+# members (tests seed their own through the API); CHORE_NOTIFY=off keeps it from
+# sending ntfy pushes.
+serve = "uvicorn chore_tracker.main:app --host 127.0.0.1 --port \"$PORT\""
+serve_env = { PORT = "$PORT", CHORE_CONFIG = "$DATA/config.yaml", CHORE_NOTIFY = "off" }
+health = "/"
+ready_timeout_s = 60
+# a change to any of these can affect every screen: run the whole acceptance suite
+shared = ["pyproject.toml", "uv.lock", "default.nix", "chore_tracker/main.py", "chore_tracker/config.py", "frontend/package.json", "frontend/bun.lock", "frontend/vite.config.*", "frontend/index.html", "frontend/src/main.ts", "frontend/src/App.vue", "frontend/src/router.ts", "frontend/src/lib/api.ts", "frontend/src/assets/index.css", "frontend/tsconfig*.json"]
+
+# A PR's preview, rendered from fisherrjd/ops (svc/chore-tracker.nix) with overrides.
+# The env replaces the spec's: no CHORE_CONFIG, so the preview runs on the image's
+# baked config.yaml (its writes die with the pod), and never notifies anyone.
+[preview]
+spec = "svc/chore-tracker.nix"
+port = 3030
+image = "ghcr.io/fisherrjd/chore-tracker:{version}-b{sha7}"
+env = { CHORE_NOTIFY = "off" }
+
+# After a PR merges, the factory opens an ops PR that bumps this image default.
+# CI on main publishes the pyproject.toml version (no sha) as the release tag.
+[promote]
+spec = "svc/chore-tracker.nix"
+image = "ghcr.io/fisherrjd/chore-tracker:{version}"
