@@ -20,6 +20,7 @@ let
       nixup
     ];
     bun = [ bun ];
+    playwright = [ nodejs playwright-test playwright-driver.browsers ];
     uv = [ uv uvEnv ];
     scripts = pkgs.lib.attrsets.attrValues scripts;
   };
@@ -45,4 +46,7 @@ in
 (env.overrideAttrs (_: {
   inherit name;
   NIXUP = "0.0.10";
+  PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+  PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+  NODE_PATH = "${pkgs.playwright-test}/lib/node_modules";
 } // uvEnv.uvEnvVars)) // { inherit scripts; }

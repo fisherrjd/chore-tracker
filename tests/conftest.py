@@ -6,6 +6,7 @@ file) at *import time*, so both env vars are set before importing
 the real ``config.yaml``.
 """
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from starlette.testclient import TestClient  # noqa: E402
 from chore_tracker import checks  # noqa: E402
 from chore_tracker.main import CONFIG_PATH as APP_CONFIG_PATH  # noqa: E402
 from chore_tracker.main import LISTS_PATH as APP_LISTS_PATH  # noqa: E402
-from chore_tracker.main import app  # noqa: E402
+from chore_tracker.main import PHOTOS_DIR, app  # noqa: E402
 from tests.helpers import default_config, write_config  # noqa: E402
 
 # Sanity: the app must be using our temp config, not the real one.
@@ -42,6 +43,7 @@ def fresh_state():
     checks._state.clear()
     write_config(default_config())
     APP_LISTS_PATH.unlink(missing_ok=True)
+    shutil.rmtree(PHOTOS_DIR, ignore_errors=True)
     yield
     checks._state.clear()
 
