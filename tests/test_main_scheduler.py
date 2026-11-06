@@ -33,3 +33,25 @@ def test_reschedule_registers_one_job_per_time():
     _reschedule(cfg)
     ids = sorted(job.id for job in scheduler.get_jobs())
     assert ids == ["daily_notify_0800", "daily_notify_1000", "daily_notify_1700"]
+
+
+def test_reschedule_adds_no_jobs_when_notify_off(monkeypatch):
+    monkeypatch.setenv("CHORE_NOTIFY", "off")
+    cfg = AppConfig(start_date=date(2026, 1, 1), notify_times=["08:00", "10:00"])
+    _reschedule(cfg)
+    assert scheduler.get_jobs() == []
+
+
+def test_notify_time_routes_schedule_nothing_when_notify_off(client, monkeypatch):
+    monkeypatch.setenv("CHORE_NOTIFY", "off")
+    assert client.post("/api/settings/notify-times", json={"time": "09:15"}).status_code == 201
+    assert scheduler.get_jobs() == []
+    assert client.delete("/api/settings/notify-times/09:15").status_code == 200
+    assert scheduler.get_jobs() == []
+
+
+def test_notify_today_route_keeps_shape_when_notify_off(client, monkeypatch):
+    monkeypatch.setenv("CHORE_NOTIFY", "off")
+    r = client.post("/api/notify/today")
+    assert r.status_code == 200
+    assert r.json() == {"sent": [], "failed": []}

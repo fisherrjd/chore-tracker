@@ -146,3 +146,27 @@ def test_notify_today_no_members_or_rooms_returns_empty(fake_http):
     cfg = AppConfig(start_date=date.today())
     assert asyncio.run(notifier.notify_today(cfg)) == {}
     assert fake_http.calls == []
+
+
+def test_notify_today_skips_sending_when_notify_off(fake_http, monkeypatch):
+    monkeypatch.setenv("CHORE_NOTIFY", "off")
+    cfg = AppConfig(
+        start_date=date.today(),
+        members=[Member(name="Alice"), Member(name="Bob")],
+        rooms=[Room(name="Kitchen"), Room(name="Bath")],
+    )
+    results = asyncio.run(notifier.notify_today(cfg))
+    assert results == {}
+    assert fake_http.calls == []
+
+
+def test_notify_today_still_sends_for_other_values(fake_http, monkeypatch):
+    monkeypatch.setenv("CHORE_NOTIFY", "on")
+    cfg = AppConfig(
+        start_date=date.today(),
+        members=[Member(name="Alice"), Member(name="Bob")],
+        rooms=[Room(name="Kitchen"), Room(name="Bath")],
+    )
+    results = asyncio.run(notifier.notify_today(cfg))
+    assert len(fake_http.calls) == 2
+    assert all(results.values())

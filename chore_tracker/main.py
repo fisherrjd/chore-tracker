@@ -13,7 +13,7 @@ from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
 from .lists import ListItem, ShoppingList, load_lists, save_lists
 from .logging_config import configure_logging
-from .notifier import notify_today
+from .notifier import notify_disabled, notify_today
 from .scheduler import get_assignment, get_day_index, get_schedule
 
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
@@ -33,6 +33,9 @@ async def _daily_notify() -> None:
 
 def _reschedule(config: AppConfig) -> None:
     scheduler.remove_all_jobs()
+    if notify_disabled():
+        log.info("scheduler.disabled", extra={"reason": "CHORE_NOTIFY=off"})
+        return
     for t in config.notify_times:
         h, m = map(int, t.split(":"))
         scheduler.add_job(
@@ -54,9 +57,11 @@ async def lifespan(app: FastAPI):
     configure_logging()
     log.info("app.startup")
     _reschedule(load_config(CONFIG_PATH))
-    scheduler.start()
+    if not notify_disabled():
+        scheduler.start()
     yield
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
     log.info("app.shutdown")
 
 
