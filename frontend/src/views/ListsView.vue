@@ -3,16 +3,18 @@ import { Badge } from '@fisherrjd/ui/badge'
 import { Button } from '@fisherrjd/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@fisherrjd/ui/card'
 import { Checkbox } from '@fisherrjd/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@fisherrjd/ui/dialog'
 import { Input } from '@fisherrjd/ui/input'
 import { PageHeader } from '@fisherrjd/ui/layout'
 import { Separator } from '@fisherrjd/ui/separator'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
 import { ConfirmDialog, EmptyState } from '@fisherrjd/ui/states'
 import { swatch } from '@fisherrjd/ui/theme'
-import { PlusIcon, XIcon } from '@lucide/vue'
-import { onMounted, ref } from 'vue'
+import { CameraIcon, PlusIcon, XIcon } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { api, ApiError } from '@/lib/api'
+import { uploadPhoto } from '@/lib/photo'
 import type { ShoppingList } from '@/types'
 
 // household shopping lists: one per store or purpose, shared and kept until
@@ -66,15 +68,50 @@ async function deleteList(name: string) {
   }
 }
 
+// photo picked in the add form, kept per list (with an object URL for the chip preview)
+const attached = ref<Record<string, { file: File; url: string }>>({})
+const attachInput = ref<HTMLInputElement | null>(null)
+const attachTarget = ref('')
+
+function pickAttach(list: string) {
+  attachTarget.value = list
+  attachInput.value?.click()
+}
+
+function onAttachPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !attachTarget.value) return
+  clearAttached(attachTarget.value)
+  attached.value[attachTarget.value] = { file, url: URL.createObjectURL(file) }
+}
+
+function clearAttached(list: string) {
+  const a = attached.value[list]
+  if (!a) return
+  URL.revokeObjectURL(a.url)
+  delete attached.value[list]
+}
+
 async function addItem(list: string) {
   const item = (newItemFor.value[list] ?? '').trim()
   if (!item) return
+  const photo = attached.value[list]?.file
   try {
     replace(await api.addListItem(list, item))
     newItemFor.value[list] = ''
   } catch (e) {
     toast.error(message(e, 'Failed to add item'))
+    return
   }
+  if (!photo) return
+  try {
+    replace(await uploadPhoto(list, item, photo))
+  } catch (e) {
+    toast.error(message(e, 'Failed to save photo'))
+  }
+  clearAttached(list)
 }
 
 async function setItem(list: string, item: string, done: boolean) {
@@ -100,6 +137,51 @@ async function clearBought(list: string) {
     toast.success(`Cleared ${removed} bought item${removed === 1 ? '' : 's'} from ${list}`)
   } catch (e) {
     toast.error(message(e, 'Failed to clear bought items'))
+  }
+}
+
+// photos: one hidden picker shared by the row buttons and the viewer's Replace.
+// No `capture` attribute, so phones offer camera or gallery.
+const fileInput = ref<HTMLInputElement | null>(null)
+const pickTarget = ref<{ list: string; item: string; replacing: boolean } | null>(null)
+const viewing = ref<{ list: string; item: string } | null>(null)
+
+const viewedItem = computed(
+  () => lists.value.find((l) => l.name === viewing.value?.list)?.items.find((i) => i.name === viewing.value?.item) ?? null,
+)
+const viewerOpen = computed({
+  get: () => viewedItem.value !== null,
+  set: (v) => {
+    if (!v) viewing.value = null
+  },
+})
+
+function pickPhoto(list: string, item: string, replacing: boolean) {
+  pickTarget.value = { list, item, replacing }
+  fileInput.value?.click()
+}
+
+async function onPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  const target = pickTarget.value
+  input.value = ''
+  if (!file || !target) return
+  try {
+    replace(await uploadPhoto(target.list, target.item, file))
+    toast.success(target.replacing ? `Photo replaced on ${target.item}` : `Photo added to ${target.item}`)
+  } catch (err) {
+    toast.error(message(err, 'Failed to save photo'))
+  }
+}
+
+async function removePhoto(list: string, item: string) {
+  try {
+    replace(await api.removeListPhoto(list, item))
+    viewing.value = null
+    toast.success(`Photo removed from ${item}`)
+  } catch (e) {
+    toast.error(message(e, 'Failed to save photo'))
   }
 }
 
@@ -174,6 +256,25 @@ onMounted(load)
                 {{ item.name }}
               </label>
               <button
+                v-if="item.image_url"
+                type="button"
+                class="size-10 shrink-0 overflow-hidden rounded-md border"
+                :aria-label="`View photo of ${item.name}`"
+                @click="viewing = { list: list.name, item: item.name }"
+              >
+                <img :src="item.image_url" :alt="item.name" class="size-full object-cover" />
+              </button>
+              <button
+                v-else
+                type="button"
+                class="flex size-10 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors hover:text-foreground"
+                :aria-label="`Add photo to ${item.name}`"
+                @click="pickPhoto(list.name, item.name, false)"
+              >
+                <CameraIcon class="size-4" />
+              </button>
+              <button
+                type="button"
                 class="text-muted-foreground/50 transition-colors hover:text-destructive"
                 :aria-label="`Remove ${item.name}`"
                 @click="deleteItem(list.name, item.name)"
@@ -192,12 +293,58 @@ onMounted(load)
 
           <form class="flex gap-2" @submit.prevent="addItem(list.name)">
             <Input v-model="newItemFor[list.name]" placeholder="Add an item…" class="h-8 text-sm" />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-label="Attach a photo"
+              @click="pickAttach(list.name)"
+            >
+              <CameraIcon />
+            </Button>
             <Button type="submit" size="sm" variant="secondary" :disabled="!newItemFor[list.name]?.trim()">
               Add
             </Button>
           </form>
+          <div v-if="attached[list.name]" class="flex items-center gap-2 text-xs text-muted-foreground">
+            <img :src="attached[list.name].url" alt="" class="size-8 rounded-md border object-cover" />
+            <span class="flex-1">Photo attached</span>
+            <button
+              type="button"
+              class="transition-colors hover:text-destructive"
+              aria-label="Remove attached photo"
+              @click="clearAttached(list.name)"
+            >
+              <XIcon class="size-3.5" />
+            </button>
+          </div>
         </CardContent>
       </Card>
     </div>
+
+    <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onPicked" />
+    <input ref="attachInput" type="file" accept="image/*" class="hidden" @change="onAttachPicked" />
+
+    <Dialog v-model:open="viewerOpen">
+      <DialogContent v-if="viewedItem && viewing">
+        <DialogTitle>{{ viewedItem.name }}</DialogTitle>
+        <DialogDescription>On {{ viewing.list }}</DialogDescription>
+        <img
+          v-if="viewedItem.image_url"
+          :src="viewedItem.image_url"
+          :alt="viewedItem.name"
+          class="max-h-[60vh] w-full object-contain"
+        />
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="pickPhoto(viewing.list, viewing.item, true)">
+            Replace photo
+          </Button>
+          <Button type="button" variant="destructive" @click="removePhoto(viewing.list, viewing.item)">
+            Remove photo
+          </Button>
+          <Button type="button" variant="secondary" @click="viewing = null">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

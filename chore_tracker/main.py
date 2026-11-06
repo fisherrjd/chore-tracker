@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from .checks import get_done, set_done
 from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
 from .lists import ListItem, ShoppingList, load_lists, save_lists
+from . import photos
 from .logging_config import configure_logging
 from .notifier import notify_disabled, notify_today
 from .scheduler import get_assignment, get_day_index, get_schedule
@@ -21,6 +22,8 @@ CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
 DIST = BASE_DIR / "frontend" / "dist"
 # Shopping lists live beside the config by default so they share its durable mount.
 LISTS_PATH = Path(os.environ.get("CHORE_LISTS", CONFIG_PATH.with_name("lists.yaml")))
+# Item photos sit beside the lists file; the dir is created on first upload.
+PHOTOS_DIR = Path(os.environ.get("CHORE_PHOTOS", LISTS_PATH.with_name("list-photos")))
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +131,10 @@ def _member_json(m: Member, ntfy_base_url: str) -> dict:
 def _list_json(sl: ShoppingList) -> dict:
     return {
         "name": sl.name,
-        "items": [{"name": i.name, "done": i.done} for i in sl.items],
+        "items": [
+            {"name": i.name, "done": i.done, "image_url": f"/api/photos/{i.image}" if i.image else None}
+            for i in sl.items
+        ],
         "remaining": sl.remaining,
         "bought": sl.bought,
     }
@@ -351,8 +357,11 @@ async def api_delete_list(list_name: str):
     store = load_lists(LISTS_PATH)
     if store.find(list_name) is None:
         raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    gone = [i.image for i in store.find(list_name).items if i.image]
     store.lists = [sl for sl in store.lists if sl.name != list_name]
     save_lists(store, LISTS_PATH)
+    for name in gone:
+        photos.remove(PHOTOS_DIR, name)
     log.info("list.deleted", extra={"list": list_name})
     return {"detail": f"Removed list '{list_name}'"}
 
@@ -401,8 +410,11 @@ async def api_delete_list_item(list_name: str, item: str):
     slist = store.find(list_name)
     if slist is None:
         raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    gone = [i.image for i in slist.items if i.name == item and i.image]
     slist.items = [i for i in slist.items if i.name != item]
     save_lists(store, LISTS_PATH)
+    for name in gone:
+        photos.remove(PHOTOS_DIR, name)
     log.info("list_item.deleted", extra={"list": list_name, "item": item})
     return _list_json(slist)
 
@@ -414,10 +426,71 @@ async def api_clear_bought(list_name: str):
     if slist is None:
         raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
     removed = slist.bought
+    gone = [i.image for i in slist.items if i.done and i.image]
     slist.items = [i for i in slist.items if not i.done]
     save_lists(store, LISTS_PATH)
+    for name in gone:
+        photos.remove(PHOTOS_DIR, name)
     log.info("list.cleared", extra={"list": list_name, "removed": removed})
     return {**_list_json(slist), "removed": removed}
+
+
+_PHOTO_TYPES = {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+
+
+@app.put("/api/lists/{list_name}/photo")
+async def api_set_list_photo(list_name: str, item: str = Form(...), file: UploadFile = File(...)):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    entry = slist.find(item)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"'{item}' is not on {list_name}")
+    data = await file.read(photos.MAX_BYTES + 1)
+    if len(data) > photos.MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Photo is too big (max 10 MB)")
+    ext = photos.sniff(data)
+    if ext is None:
+        raise HTTPException(
+            status_code=415, detail="That file isn't a photo. Use JPEG, PNG, WebP or GIF."
+        )
+    old = entry.image
+    entry.image = photos.save(PHOTOS_DIR, data, ext)
+    save_lists(store, LISTS_PATH)
+    photos.remove(PHOTOS_DIR, old)
+    log.info("list_item.photo_set", extra={"list": list_name, "item": item})
+    return _list_json(slist)
+
+
+@app.delete("/api/lists/{list_name}/photo/{item:path}")
+async def api_remove_list_photo(list_name: str, item: str):
+    store = load_lists(LISTS_PATH)
+    slist = store.find(list_name)
+    if slist is None:
+        raise HTTPException(status_code=404, detail=f"List '{list_name}' not found")
+    entry = slist.find(item)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"'{item}' is not on {list_name}")
+    old = entry.image
+    entry.image = None
+    save_lists(store, LISTS_PATH)
+    photos.remove(PHOTOS_DIR, old)
+    log.info("list_item.photo_removed", extra={"list": list_name, "item": item})
+    return _list_json(slist)
+
+
+# `:path` so an encoded "..%2F" (decoded to "/") still lands here, not on the SPA catch-all
+@app.get("/api/photos/{name:path}")
+async def api_photo(name: str):
+    path = PHOTOS_DIR / name
+    if not photos.NAME_RE.fullmatch(name) or not path.is_file():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(
+        path,
+        media_type=_PHOTO_TYPES[name.rsplit(".", 1)[1]],
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @app.post("/api/notify/today")
