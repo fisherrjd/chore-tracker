@@ -83,3 +83,70 @@ def test_get_schedule_shape_and_dates():
     for day in schedule:
         assert set(day) == {"date", "day_index", "assignments"}
         assert set(day["assignments"]) == {"Alice", "Bob"}
+
+
+# --- full house clean ---------------------------------------------------------
+
+from chore_tracker.config import Room
+from chore_tracker.scheduler import get_full_clean, resolve_full_clean
+
+
+def _rooms(*sizes):
+    return [Room(name=f"R{i}", tasks=[f"t{j}" for j in range(n)]) for i, n in enumerate(sizes)]
+
+
+def _total(rooms, names):
+    by = {r.name: len(r.tasks) for r in rooms}
+    return sum(by[n] for n in names)
+
+
+def test_full_clean_every_room_once_and_balanced():
+    rooms = _rooms(5, 3, 2, 4, 1)
+    split = get_full_clean(0, rooms, ["A", "B"])
+    flat = [n for v in split.values() for n in v]
+    assert sorted(flat) == sorted(r.name for r in rooms)
+    totals = [_total(rooms, v) for v in split.values()]
+    assert abs(totals[0] - totals[1]) <= 5
+    for v in split.values():
+        assert v == [r.name for r in rooms if r.name in v]
+
+
+def test_full_clean_odd_room_count():
+    rooms = _rooms(2, 2, 2)
+    split = get_full_clean(0, rooms, ["A", "B"])
+    assert sorted(len(v) for v in split.values()) == [1, 2]
+
+
+def test_full_clean_single_member_gets_everything():
+    rooms = _rooms(1, 2)
+    assert get_full_clean(3, rooms, ["A"]) == {"A": ["R0", "R1"]}
+
+
+def test_full_clean_empty():
+    assert get_full_clean(0, [], ["A", "B"]) == {}
+    assert get_full_clean(0, _rooms(1), []) == {}
+
+
+def test_full_clean_more_people_than_rooms_keeps_every_member():
+    split = get_full_clean(0, _rooms(1), ["A", "B"])
+    assert set(split) == {"A", "B"}
+    assert sorted(len(v) for v in split.values()) == [0, 1]
+
+
+def test_resolve_keeps_saved_and_adds_new_room_to_lighter():
+    rooms = _rooms(3, 1, 1)
+    saved = {"A": ["R0"], "B": ["R1"]}
+    assert resolve_full_clean(saved, rooms, ["A", "B"]) == {"A": ["R0"], "B": ["R1", "R2"]}
+
+
+def test_resolve_drops_deleted_room_and_member():
+    rooms = _rooms(1, 1)
+    saved = {"A": ["R0", "Gone"], "B": ["R1"], "Z": ["R0"]}
+    assert resolve_full_clean(saved, rooms, ["A", "B"]) == {"A": ["R0"], "B": ["R1"]}
+    # B removed: its room goes to the remaining member
+    assert resolve_full_clean(saved, rooms, ["A"]) == {"A": ["R0", "R1"]}
+
+
+def test_resolve_adds_new_member_empty():
+    rooms = _rooms(1)
+    assert resolve_full_clean({"A": ["R0"]}, rooms, ["A", "C"]) == {"A": ["R0"], "C": []}

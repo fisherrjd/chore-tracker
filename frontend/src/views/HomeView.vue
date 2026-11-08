@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Button } from '@fisherrjd/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@fisherrjd/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@fisherrjd/ui/card'
 import { ProgressMeter } from '@fisherrjd/ui/dashboard'
 import { PageHeader } from '@fisherrjd/ui/layout'
 import { Skeleton } from '@fisherrjd/ui/skeleton'
-import { EmptyState } from '@fisherrjd/ui/states'
+import { ConfirmDialog, EmptyState } from '@fisherrjd/ui/states'
 import { swatch } from '@fisherrjd/ui/theme'
 import {
   Table,
@@ -14,16 +14,17 @@ import {
   TableHeader,
   TableRow,
 } from '@fisherrjd/ui/table'
-import { SendIcon } from '@lucide/vue'
+import { SendIcon, SparklesIcon } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import type { HomeData } from '@/types'
 
 const data = ref<HomeData | null>(null)
 const loading = ref(true)
 const sending = ref(false)
+const fullBusy = ref(false)
 
 async function load() {
   try {
@@ -50,6 +51,35 @@ async function sendNotifications() {
   }
 }
 
+async function startFullClean() {
+  if (fullBusy.value) return
+  fullBusy.value = true
+  try {
+    const result = await api.startFullClean()
+    toast.success('Full house clean started')
+    if (result.failed.length) toast.error(`Failed: ${result.failed.join(', ')}`)
+    await load()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Failed to start full house clean')
+  } finally {
+    fullBusy.value = false
+  }
+}
+
+async function stopFullClean() {
+  if (fullBusy.value) return
+  fullBusy.value = true
+  try {
+    await api.stopFullClean()
+    toast.success('Back to the normal rotation')
+    await load()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Failed to stop full house clean')
+  } finally {
+    fullBusy.value = false
+  }
+}
+
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'short',
@@ -59,6 +89,16 @@ function formatDate(iso: string) {
 }
 
 const people = computed(() => Object.keys(data.value?.schedule[0]?.assignments ?? {}))
+
+// today's rooms per person: the full-clean split when active, else the rotation
+const todayRooms = computed<Record<string, string[]>>(() => {
+  if (data.value?.full_clean) return data.value.full_clean_rooms
+  const out: Record<string, string[]> = {}
+  for (const [person, room] of Object.entries(data.value?.schedule[0]?.assignments ?? {})) {
+    out[person] = room ? [room] : []
+  }
+  return out
+})
 
 const description = computed(() => {
   if (!data.value?.schedule.length) return 'Nothing scheduled yet.'
@@ -76,6 +116,18 @@ onMounted(load)
   <div class="space-y-6">
     <PageHeader title="Today" :description="description">
       <template #actions>
+        <ConfirmDialog
+          v-if="!data?.full_clean"
+          title="Start a full house clean?"
+          :description="`Every room is split between ${people.join(' and ')} for today, and everyone gets a notification. Tomorrow the normal rotation is back.`"
+          confirm-label="Start full clean"
+          @confirm="startFullClean"
+        >
+          <Button variant="outline" :disabled="fullBusy || loading || !people.length">
+            <SparklesIcon />
+            Full house clean
+          </Button>
+        </ConfirmDialog>
         <Button :disabled="sending || loading" @click="sendNotifications">
           <SendIcon />
           {{ sending ? 'Sending…' : 'Send notifications' }}
@@ -100,9 +152,21 @@ onMounted(load)
     </EmptyState>
 
     <template v-else>
+      <Card v-if="data.full_clean" class="rise-in border-warning/40 bg-warning/10 py-4">
+        <CardContent class="flex flex-wrap items-center justify-between gap-3 px-5">
+          <div>
+            <CardTitle>Full house clean today</CardTitle>
+            <p class="text-sm text-muted-foreground">
+              Every room is split between you. The normal rotation is back tomorrow.
+            </p>
+          </div>
+          <Button variant="outline" :disabled="fullBusy" @click="stopFullClean">Back to normal</Button>
+        </CardContent>
+      </Card>
+
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <RouterLink
-          v-for="(room, person, i) in data.schedule[0]!.assignments"
+          v-for="(rooms, person, i) in todayRooms"
           :key="person"
           :to="`/checklist/${person}`"
           class="rise-in block h-full"
@@ -119,7 +183,9 @@ onMounted(load)
               </span>
               <div class="min-w-0">
                 <CardTitle class="truncate text-xl">{{ person }}</CardTitle>
-                <p class="truncate font-semibold opacity-85">{{ room }}</p>
+                <p class="truncate font-semibold opacity-85">
+                  {{ data.full_clean ? `${rooms.length} rooms` : rooms[0] }}
+                </p>
               </div>
             </div>
             <div class="px-5 py-4">
@@ -134,6 +200,9 @@ onMounted(load)
                 :detail="`${data.done_map[person]!.done}/${data.done_map[person]!.total} done`"
               />
               <p v-else class="text-sm text-muted-foreground">No tasks</p>
+              <ul v-if="rooms.length" class="mt-3 space-y-0.5 text-sm text-muted-foreground">
+                <li v-for="name in rooms" :key="name">{{ name }}</li>
+              </ul>
             </div>
           </Card>
         </RouterLink>
@@ -168,8 +237,18 @@ onMounted(load)
                 <TableCell class="whitespace-nowrap">{{ i === 0 ? 'Today' : formatDate(day.date) }}</TableCell>
                 <TableCell v-for="(person, p) in people" :key="person">
                   <!-- rooms tinted with their person's color, so each column reads as one -->
+                  <div v-if="i === 0 && todayRooms[person]?.length" class="flex flex-wrap gap-1">
+                    <span
+                      v-for="name in todayRooms[person]"
+                      :key="name"
+                      class="inline-block rounded-md bg-swatch/20 px-2 py-0.5"
+                      :style="swatch(p)"
+                    >
+                      {{ name }}
+                    </span>
+                  </div>
                   <span
-                    v-if="day.assignments[person]"
+                    v-else-if="i !== 0 && day.assignments[person]"
                     class="inline-block rounded-md bg-swatch/20 px-2 py-0.5"
                     :style="swatch(p)"
                   >

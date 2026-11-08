@@ -30,10 +30,10 @@ There is no linter/formatter configured in this repo.
 
 Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/api/*` routes + APScheduler wiring). The supporting modules are deliberately small and single-purpose:
 
-- **`scheduler.py`** — pure rotation math, no I/O. `get_assignment(day_index, rooms, people)` is the core: a round-robin that requires `len(rooms) % len(people) == 0`. Day index is `(today - start_date).days`.
-- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`. `dashboard_url` is used by `notifier.py` for the `Click` deep-link header.
-- **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`.
-- **`checks.py`** — in-memory, process-local checklist state keyed by day_index. Intentionally **not** persisted.
+- **`scheduler.py`** — pure rotation math, no I/O. `get_assignment(day_index, rooms, people)` is the core: a round-robin that requires `len(rooms) % len(people) == 0`. Day index is `(today - start_date).days`. Also holds the full-house-clean math: `get_full_clean` (greedy split by task count, no divisibility rule), `resolve_full_clean` (saved split vs. current rooms/members; never moves an assigned room) and `todays_rooms(config)` → `{member: [rooms]}`, the single source for who cleans what today (used by `main.py` and `notifier.py`). `get_schedule` stays the plain rotation.
+- **`config.py`** — Pydantic `AppConfig` loaded from / saved to YAML. `today` and `tzinfo` are computed from the configured `timezone`, **not** the server clock. `save_config` writes atomically via a `.tmp` + `replace`. `dashboard_url` is used by `notifier.py` for the `Click` deep-link header. Optional `full_clean: FullClean {date, assignments}` is saved in the YAML; `full_clean_active` is true only when its date is today, so it expires by itself. `config_to_dict` must keep round-tripping it, since every mutation route saves through it.
+- **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`. During an active full clean each member gets one message (`Full house clean: N rooms`) with tasks grouped per room.
+- **`checks.py`** — in-memory, process-local checklist state keyed `day_index -> room -> tasks` (by room, not member, so ticks survive mode changes; with more members than rooms, two people on one room share ticks). Intentionally **not** persisted.
 - **`lists.py`** — household shopping lists (named lists like "Costco" or "Target", each holding items with a `done` flag), persisted to their own YAML file (`lists.yaml` beside the config, or `CHORE_LISTS`). Pure load/save + small Pydantic models; the `/api/lists` routes in `main.py` do the mutations.
 - **`photos.py`** — pure helpers for list-item photos: `sniff` (magic-byte type check, no Pillow), `save`/`remove` (atomic write, `<uuid4hex>.<ext>` names), `NAME_RE`, `MAX_BYTES` (10 MB). Files live in `PHOTOS_DIR` (`CHORE_PHOTOS`, default `list-photos/` beside `lists.yaml`), created on first upload.
 - **`logging_config.py`** — logfmt formatter to stdout. App code emits structured events via `log.info("event.name", extra={...})`.
@@ -61,12 +61,12 @@ frontend/
     assets/index.css      tailwind + @fisherrjd/ui/styles.css (+ app-only CSS)
     components/           domain patterns from app-template (checklist, forms, …)
     views/
-      HomeView.vue        today cards + 14-day schedule + notify button
+      HomeView.vue        today cards + 14-day schedule + notify button + Full house clean button/confirm/banner
       ListsView.vue       shopping lists: items, bought toggles, clear bought, item photos (thumbnail, viewer dialog, attach-on-add)
       RoomsView.vue       rooms + tasks CRUD
       MembersView.vue     members CRUD + ntfy links
       SettingsView.vue    notify-times CRUD
-      ChecklistView.vue   /checklist/:member (debounced auto-save)
+      ChecklistView.vue   /checklist/:member (one section per room, debounced auto-save)
 ```
 
 `/styleguide` (the theme lab) exists only under `bun run dev`; builds never include it.
@@ -77,7 +77,9 @@ All mutations accept JSON bodies and return JSON. Errors use `{"detail": "..."}`
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/home` | today's assignments + done_map + 14-day schedule |
+| GET | `/api/home` | today's assignments + done_map + 14-day schedule + `full_clean`, `full_clean_rooms` |
+| POST | `/api/full-clean` | split all rooms between members for today, notify (409 without rooms/members; re-POST when active is a no-op, no notify) |
+| DELETE | `/api/full-clean` | back to normal rotation (no notification) |
 | GET | `/api/schedule` | 14-day schedule |
 | GET/POST | `/api/rooms` | list rooms / add room |
 | DELETE | `/api/rooms/{name}` | remove room |
@@ -88,8 +90,8 @@ All mutations accept JSON bodies and return JSON. Errors use `{"detail": "..."}`
 | GET | `/api/settings` | notify_times + timezone |
 | POST | `/api/settings/notify-times` | add notify time |
 | DELETE | `/api/settings/notify-times/{time}` | remove notify time |
-| GET | `/api/checklist/{member}` | today's checklist + done list |
-| POST | `/api/checklist/{member}` | record completed tasks |
+| GET | `/api/checklist/{member}` | today's checklist: `rooms[{name,tasks,done}]`, `full_clean`, plus first room as `room_name`/`tasks`/`done` |
+| POST | `/api/checklist/{member}` | record ticks: `{tasks}` (first room) or `{rooms: {room: [tasks]}}` (replaces listed rooms; rooms not held today are dropped; neither → 422); returns post-save rooms |
 | POST | `/api/notify/today` | fire notifications now |
 | GET/POST | `/api/lists` | shopping lists / add list |
 | DELETE | `/api/lists/{name}` | remove list |
@@ -105,7 +107,7 @@ List JSON items are `{name, done, image_url}`; `image_url` is `/api/photos/<file
 
 ### Three state stores, by design
 
-1. **Config (durable)** — rooms, members, notify times. Persisted to `config.yaml`. In production this is a mounted file at `/data/config.yaml` (env `CHORE_CONFIG`).
+1. **Config (durable)** — rooms, members, notify times, the day's full-clean split. Persisted to `config.yaml`. In production this is a mounted file at `/data/config.yaml` (env `CHORE_CONFIG`).
 2. **Checklist completion (ephemeral)** — `checks._state`, in-process, daily.
 3. **Shopping lists (durable, not config)** — `lists.yaml` beside the config
    file by default (override with env `CHORE_LISTS`). Kept separate so
@@ -133,7 +135,14 @@ Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replic
 - File inputs are `<input type="file" accept="image/*">` with **no** `capture`, so phones get camera/gallery and computers a file dialog.
 - The browser shrinks big photos (<~900 KB) so the default 1 MB ingress limit works; the server accepts up to 10 MB.
 
+- Full house clean splits rooms balanced by task count (a big room counts for more), not alternately: the ask was an even split and room sizes differ a lot.
+- The split is saved in `config.yaml` with its date (not in memory) so a restart neither undoes the day's plan nor reshuffles it; tomorrow the rotation is back with no cleanup.
+- Not done: manual room choice, multi-day cleans, a notification on "Back to normal", persisting ticks.
+
 ## Conventions & gotchas
+
+- **Full clean:** always use `scheduler.todays_rooms(config)` for "who has which rooms today"; never `get_assignment` directly in routes/notifier. `/api/schedule` and `schedule` in `/api/home` deliberately ignore a full clean.
+- **Checklist saves:** `ChecklistView.vue` watches `done` with `{ deep: true }` (guarded by `seeding`) because it is a `Record<room, tasks>`; after each save it compares the response's rooms to the screen and re-seeds + toasts if the mode changed elsewhere.
 
 - **Photo routes:** `GET /api/photos/{name:path}` must stay `:path` so traversal attempts 404 here instead of falling to the SPA catch-all. Validate order on upload: list, item, size, type.
 - **Frontend multipart:** `lib/api.ts` must not set a JSON Content-Type for `FormData`. A non-JSON 413 (ingress) becomes "Photo is too big for the server".

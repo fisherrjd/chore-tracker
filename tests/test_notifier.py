@@ -170,3 +170,41 @@ def test_notify_today_still_sends_for_other_values(fake_http, monkeypatch):
     results = asyncio.run(notifier.notify_today(cfg))
     assert len(fake_http.calls) == 2
     assert all(results.values())
+
+
+def test_notify_today_full_clean_sends_grouped_message(fake_http):
+    from chore_tracker.config import FullClean
+
+    cfg = AppConfig(
+        start_date=date.today(),
+        ntfy_base_url="https://ntfy.example.com",
+        dashboard_url="https://chores.jade.rip",
+        members=[Member(name="Alice"), Member(name="Bob")],
+        rooms=[
+            Room(name="Kitchen", tasks=["Dishes", "Sweep"]),
+            Room(name="Bath", tasks=["Toilet"]),
+            Room(name="Den", tasks=["Vacuum"]),
+        ],
+    )
+    cfg.full_clean = FullClean(
+        date=cfg.today, assignments={"Alice": ["Kitchen", "Den"], "Bob": ["Bath"]}
+    )
+    results = asyncio.run(notifier.notify_today(cfg, trigger="full_clean"))
+    assert results == {"Alice": True, "Bob": True}
+    calls = {c["url"].rsplit("/", 1)[1]: c for c in fake_http.calls}
+    alice = calls["alice"]
+    assert alice["headers"]["Title"] == "Full house clean: 2 rooms"
+    assert alice["content"] == "Kitchen\n• Dishes\n• Sweep\n\nDen\n• Vacuum"
+    assert alice["headers"]["Click"] == "https://chores.jade.rip/checklist/Alice"
+    assert calls["bob"]["headers"]["Title"] == "Full house clean: 1 rooms"
+    assert calls["bob"]["content"] == "Bath\n• Toilet"
+
+
+def test_notify_today_full_clean_respects_notify_off(fake_http, monkeypatch):
+    from chore_tracker.config import FullClean
+
+    monkeypatch.setenv("CHORE_NOTIFY", "off")
+    cfg = _config_today()
+    cfg.full_clean = FullClean(date=cfg.today, assignments={"Alice": ["Kitchen", "Bath"], "Bob": []})
+    assert asyncio.run(notifier.notify_today(cfg)) == {}
+    assert fake_http.calls == []

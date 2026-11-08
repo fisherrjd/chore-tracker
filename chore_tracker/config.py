@@ -20,6 +20,18 @@ class Room(BaseModel):
     tasks: list[str] = []
 
 
+class FullClean(BaseModel):
+    date: date
+    assignments: dict[str, list[str]]
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            return date.fromisoformat(v)
+        return v
+
+
 class AppConfig(BaseModel):
     start_date: date
     timezone: str = "America/Denver"
@@ -28,6 +40,7 @@ class AppConfig(BaseModel):
     notify_times: list[str] = ["08:00"]
     members: list[Member] = []
     rooms: list[Room] = []
+    full_clean: FullClean | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -63,6 +76,10 @@ class AppConfig(BaseModel):
         return sorted(set(normalized))
 
     @property
+    def full_clean_active(self) -> bool:
+        return self.full_clean is not None and self.full_clean.date == self.today
+
+    @property
     def tzinfo(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
 
@@ -85,7 +102,7 @@ def load_config(path: Path) -> AppConfig:
 
 
 def config_to_dict(config: AppConfig) -> dict:
-    return {
+    data = {
         "start_date": config.start_date.isoformat(),
         "timezone": config.timezone,
         "ntfy_base_url": config.ntfy_base_url,
@@ -94,6 +111,12 @@ def config_to_dict(config: AppConfig) -> dict:
         "members": [m.model_dump() for m in config.members],
         "rooms": [r.model_dump() for r in config.rooms],
     }
+    if config.full_clean is not None:
+        data["full_clean"] = {
+            "date": config.full_clean.date.isoformat(),
+            "assignments": config.full_clean.assignments,
+        }
+    return data
 
 
 def save_config(config: AppConfig, path: Path) -> None:
