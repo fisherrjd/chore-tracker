@@ -20,13 +20,17 @@ export class ApiError extends Error {
 }
 
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
+  // FormData bodies need the browser to set the multipart Content-Type itself.
+  const isForm = options?.body instanceof FormData
   const r = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    ...(isForm ? {} : { headers: { 'Content-Type': 'application/json' } }),
     ...options,
   })
   if (!r.ok) {
-    const body = await r.json().catch(() => ({ detail: r.statusText }))
-    throw new ApiError(r.status, (body as { detail?: string }).detail ?? r.statusText)
+    const body = await r.json().catch(() => null)
+    const detail = (body as { detail?: string } | null)?.detail
+    if (r.status === 413 && !detail) throw new ApiError(413, 'Photo is too big for the server')
+    throw new ApiError(r.status, detail ?? r.statusText)
   }
   return r.json() as Promise<T>
 }
@@ -96,6 +100,20 @@ export const api = {
   deleteListItem: (list: string, item: string) =>
     req<ShoppingList>(
       `/api/lists/${encodeURIComponent(list)}/items/${encodeURIComponent(item)}`,
+      { method: 'DELETE' },
+    ),
+  setListPhoto: (list: string, item: string, file: Blob, filename: string) => {
+    const form = new FormData()
+    form.append('item', item)
+    form.append('file', file, filename)
+    return req<ShoppingList>(`/api/lists/${encodeURIComponent(list)}/photo`, {
+      method: 'PUT',
+      body: form,
+    })
+  },
+  removeListPhoto: (list: string, item: string) =>
+    req<ShoppingList>(
+      `/api/lists/${encodeURIComponent(list)}/photo/${encodeURIComponent(item)}`,
       { method: 'DELETE' },
     ),
   clearBought: (list: string) =>

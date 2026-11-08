@@ -52,6 +52,7 @@ export interface NotifyResult {
 export interface ListItem {
   name: string
   done: boolean
+  image_url: string | null
 }
 
 export interface ShoppingList {

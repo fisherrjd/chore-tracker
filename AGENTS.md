@@ -35,6 +35,7 @@ Request/notification flow centers on `chore_tracker/main.py` (FastAPI app + `/ap
 - **`notifier.py`** — builds and POSTs ntfy messages. Each member's topic is `name.lower()` appended to `ntfy_base_url`; the notification's `Click` header deep-links to `{dashboard_url}/checklist/{member}`.
 - **`checks.py`** — in-memory, process-local checklist state keyed by day_index. Intentionally **not** persisted.
 - **`lists.py`** — household shopping lists (named lists like "Costco" or "Target", each holding items with a `done` flag), persisted to their own YAML file (`lists.yaml` beside the config, or `CHORE_LISTS`). Pure load/save + small Pydantic models; the `/api/lists` routes in `main.py` do the mutations.
+- **`photos.py`** — pure helpers for list-item photos: `sniff` (magic-byte type check, no Pillow), `save`/`remove` (atomic write, `<uuid4hex>.<ext>` names), `NAME_RE`, `MAX_BYTES` (10 MB). Files live in `PHOTOS_DIR` (`CHORE_PHOTOS`, default `list-photos/` beside `lists.yaml`), created on first upload.
 - **`logging_config.py`** — logfmt formatter to stdout. App code emits structured events via `log.info("event.name", extra={...})`.
 
 ### Frontend (`frontend/`)
@@ -54,13 +55,14 @@ frontend/
     main.ts  App.vue      App.vue = AppShell + nav
     router.ts             vue-router, history mode; /styleguide is dev-only
     lib/api.ts            typed fetch client (all /api/* calls)
+    lib/photo.ts          shrinkPhoto (canvas re-encode only if >900 KB or >1280 px) + uploadPhoto
     lib/utils.ts          cn() (from @fisherrjd/ui) + uid()
     types.ts              TS types mirroring the backend models
     assets/index.css      tailwind + @fisherrjd/ui/styles.css (+ app-only CSS)
     components/           domain patterns from app-template (checklist, forms, …)
     views/
       HomeView.vue        today cards + 14-day schedule + notify button
-      ListsView.vue       shopping lists: items, bought toggles, clear bought
+      ListsView.vue       shopping lists: items, bought toggles, clear bought, item photos (thumbnail, viewer dialog, attach-on-add)
       RoomsView.vue       rooms + tasks CRUD
       MembersView.vue     members CRUD + ntfy links
       SettingsView.vue    notify-times CRUD
@@ -95,6 +97,11 @@ All mutations accept JSON bodies and return JSON. Errors use `{"detail": "..."}`
 | PUT | `/api/lists/{list}/items` | set an item's bought state (`{item, done}`) |
 | DELETE | `/api/lists/{list}/items/{item}` | remove item |
 | POST | `/api/lists/{list}/clear` | drop bought items |
+| PUT | `/api/lists/{list}/photo` | multipart `item`+`file`: set/replace the item's photo (404 list, 404 item, 413, 415) |
+| DELETE | `/api/lists/{list}/photo/{item}` | remove the item's photo |
+| GET | `/api/photos/{name}` | serve a photo (immutable cache; strict name regex, else 404 JSON) |
+
+List JSON items are `{name, done, image_url}`; `image_url` is `/api/photos/<file>` or null. Removing an item, clearing bought items or removing a list deletes their photo files.
 
 ### Three state stores, by design
 
@@ -120,11 +127,23 @@ Notifications fire from an in-process `AsyncIOScheduler`. Works **only at replic
 
 **`CHORE_NOTIFY=off`** turns notifications off entirely: the scheduler is not started and `_reschedule` adds no jobs (so the notify-time routes still work but schedule nothing), and `notify_today` logs `notify.disabled` and POSTs nothing. `/api/notify/today` still answers `{"sent": [], "failed": []}`. Unset or any other value keeps the normal behaviour. The env var is checked at call time (`notifier.notify_disabled()`).
 
+## Decisions
+
+- One photo per item, uploaded (not a pasted URL), settable on add and later (add/replace/remove). A photo is a reference shot for shoppers; replacing is simpler than a gallery.
+- File inputs are `<input type="file" accept="image/*">` with **no** `capture`, so phones get camera/gallery and computers a file dialog.
+- The browser shrinks big photos (<~900 KB) so the default 1 MB ingress limit works; the server accepts up to 10 MB.
+
 ## Conventions & gotchas
+
+- **Photo routes:** `GET /api/photos/{name:path}` must stay `:path` so traversal attempts 404 here instead of falling to the SPA catch-all. Validate order on upload: list, item, size, type.
+- **Frontend multipart:** `lib/api.ts` must not set a JSON Content-Type for `FormData`. A non-JSON 413 (ingress) becomes "Photo is too big for the server".
+- **Buttons in forms:** every non-submit button in `ListsView.vue` needs `type="button"`; the viewer dialog renders outside any `<form>`.
+- **Acceptance tests:** `cd frontend && bun run test:acceptance` (Playwright from Nix, linked into `node_modules` by `scripts/acceptance.sh`; not a dep, tests live in `frontend/tests/acceptance/`).
 
 - **Path resolution:** `CHORE_BASE` and `CHORE_CONFIG` are read at *import time* in `main.py`. Tests set both in `tests/conftest.py` before importing the app.
 - **Tests skip the lifespan:** the `client` fixture builds `TestClient(app)` without a `with` block so the scheduler never starts during tests.
 - **SPA in tests:** `tests/conftest.py` points `CHORE_BASE` at a temp dir with a stub `frontend/dist/index.html`, so the catch-all is tested without a frontend build. All API tests use `/api/*` routes explicitly.
+- **Test photos:** `fresh_state` also wipes `PHOTOS_DIR`; tests generate tiny images themselves.
 - **Test helpers (`tests/helpers.py`):** `default_config()` seeds a known-good config (2 members: Alice/Bob, 4 rooms, `America/Denver` timezone, today as `start_date` so `day_index = 0`). `write_config()` writes a raw dict to the temp config file. Both are called by the `autouse` `fresh_state` fixture — every test starts from this baseline.
 - **`goals/`** — planning/design markdown files, not code.
 - **Config back-compat:** `AppConfig` migrates the legacy single `notify_time` string to `notify_times`.

@@ -17,6 +17,7 @@ DEFAULT_LIST = "Groceries"
 class ListItem(BaseModel):
     name: str
     done: bool = False
+    image: str | None = None  # stored photo filename, not a path
 
 
 class ShoppingList(BaseModel):
@@ -54,7 +55,11 @@ def load_lists(path: Path) -> ShoppingLists:
 
 
 def save_lists(store: ShoppingLists, path: Path) -> None:
-    data = store.model_dump()
+    data = store.model_dump(exclude_defaults=False)
+    for sl in data["lists"]:
+        for item in sl["items"]:
+            if item["image"] is None:
+                del item["image"]  # keep lists.yaml free of empty photo keys
     tmp = path.with_suffix(".yaml.tmp")
     tmp.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
     tmp.replace(path)
