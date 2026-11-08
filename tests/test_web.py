@@ -1,4 +1,5 @@
 """End-to-end HTTP behavior for every /api/* route, via TestClient."""
+import pytest
 import yaml
 
 from chore_tracker.config import load_config
@@ -203,7 +204,8 @@ def test_api_checklist_only_records_valid_tasks(client):
 
     cfg = load_config(config_path())
     idx = get_day_index(cfg.start_date, cfg.today)
-    assert checks.get_done(idx, "Alice") == {"Dishes"}
+    room = client.get("/api/checklist/Alice").json()["room_name"]
+    assert checks.get_done(idx, room) == {"Dishes"}
 
 
 def test_api_checklist_empty_submit_clears(client):
@@ -214,7 +216,8 @@ def test_api_checklist_empty_submit_clears(client):
 
     cfg = load_config(config_path())
     idx = get_day_index(cfg.start_date, cfg.today)
-    assert checks.get_done(idx, "Alice") == set()
+    room = client.get("/api/checklist/Alice").json()["room_name"]
+    assert checks.get_done(idx, room) == set()
 
 
 def test_api_checklist_post_unknown_member_returns_404(client):
@@ -401,3 +404,189 @@ def test_spa_fallback_serves_lists_path(client):
     r = client.get("/lists")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
+
+
+# ── full clean ────────────────────────────────────────────────────────────────
+
+def test_full_clean_start_stop_and_ticks_follow_room(client, monkeypatch):
+    async def fake_notify(config, *, trigger="manual"):
+        return {"Alice": True, "Bob": False}
+
+    monkeypatch.setattr("chore_tracker.main.notify_today", fake_notify)
+    client.post("/api/checklist/Alice", json={"tasks": ["Dishes"]})
+    r = client.post("/api/full-clean")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["active"] and data["sent"] == ["Alice"] and data["failed"] == ["Bob"]
+    assert sorted(sum(data["assignments"].values(), [])) == sorted(
+        r["name"] for r in client.get("/api/rooms").json()
+    )
+    again = client.post("/api/full-clean").json()
+    assert again["sent"] == [] and again["failed"] == []
+    home = client.get("/api/home").json()
+    assert home["full_clean"] is True and home["full_clean_rooms"] == data["assignments"]
+    chk = client.get("/api/checklist/Alice").json()
+    assert chk["full_clean"] is True and len(chk["rooms"]) == len(data["assignments"]["Alice"])
+    assert client.delete("/api/full-clean").json() == {"active": False}
+    assert client.get("/api/home").json()["full_clean_rooms"] == {}
+
+
+def test_checklist_post_requires_tasks_or_rooms(client):
+    r = client.post("/api/checklist/Alice", json={})
+    assert r.status_code == 422 and r.json() == {"detail": "Send tasks or rooms"}
+
+
+# ── full clean: behaviour ─────────────────────────────────────────────────────
+
+@pytest.fixture
+def notify_calls(monkeypatch):
+    calls = []
+
+    async def fake_notify(config, *, trigger="manual"):
+        calls.append(trigger)
+        return {m.name: True for m in config.members}
+
+    monkeypatch.setattr("chore_tracker.main.notify_today", fake_notify)
+    return calls
+
+
+def _start(client):
+    r = client.post("/api/full-clean")
+    assert r.status_code == 200
+    return r.json()["assignments"]
+
+
+def test_full_clean_start_notifies_once_and_stop_does_not(client, notify_calls):
+    r = client.post("/api/full-clean").json()
+    assert r["sent"] == ["Alice", "Bob"] and notify_calls == ["full_clean"]
+    assert client.delete("/api/full-clean").json() == {"active": False}
+    assert notify_calls == ["full_clean"]
+
+
+def test_full_clean_409_without_rooms_or_members(client, notify_calls):
+    write_config({**default_config(), "rooms": []})
+    r = client.post("/api/full-clean")
+    assert r.status_code == 409 and r.json() == {"detail": "Add rooms and members first"}
+    write_config({**default_config(), "members": []})
+    assert client.post("/api/full-clean").status_code == 409
+    assert notify_calls == []
+
+
+def test_full_clean_repost_keeps_split_and_sends_nothing(client, notify_calls):
+    first = _start(client)
+    client.post("/api/rooms/Bath/tasks", json={"task": "Mop"})
+    notify_calls.clear()
+    r = client.post("/api/full-clean").json()
+    assert r["assignments"] == first
+    assert r["sent"] == [] and r["failed"] == []
+    assert notify_calls == []
+
+
+def test_full_clean_room_added_after_start_goes_to_lighter_person(client, notify_calls):
+    before = _start(client)
+    room_map = {r["name"]: len(r["tasks"]) for r in client.get("/api/rooms").json()}
+    load = {m: sum(room_map[n] for n in rooms) for m, rooms in before.items()}
+    lighter = min(load, key=lambda m: (load[m], list(before).index(m)))
+    client.post("/api/rooms", json={"name": "Garage"})
+    after = client.get("/api/home").json()["full_clean_rooms"]
+    assert "Garage" in after[lighter]
+    for m in before:
+        assert set(before[m]) <= set(after[m])
+
+
+def test_full_clean_deleted_room_and_member_are_dropped(client, notify_calls):
+    before = _start(client)
+    gone = before["Alice"][0]
+    client.delete(f"/api/rooms/{gone}")
+    home = client.get("/api/home").json()
+    assert gone not in sum(home["full_clean_rooms"].values(), [])
+    client.delete("/api/members/Bob")
+    home = client.get("/api/home").json()
+    assert list(home["full_clean_rooms"]) == ["Alice"]
+    assert home["full_clean"] is True
+
+
+def test_full_clean_schedule_unchanged_while_active(client, notify_calls):
+    normal = client.get("/api/schedule").json()
+    _start(client)
+    assert client.get("/api/schedule").json() == normal
+    home = client.get("/api/home").json()
+    assert home["schedule"] == normal
+
+
+def test_full_clean_same_task_name_in_two_rooms_ticks_separately(client, notify_calls):
+    write_config({
+        **default_config(),
+        "members": [{"name": "Alice"}],
+        "rooms": [
+            {"name": "Kitchen", "tasks": ["Sweep", "Dishes"]},
+            {"name": "Den", "tasks": ["Sweep"]},
+        ],
+    })
+    _start(client)
+    r = client.post("/api/checklist/Alice", json={"rooms": {"Kitchen": ["Sweep"]}}).json()
+    by_room = {x["name"]: x["done"] for x in r["rooms"]}
+    assert by_room == {"Kitchen": ["Sweep"], "Den": []}
+    done = client.get("/api/home").json()["done_map"]["Alice"]
+    assert done == {"done": 1, "total": 3}
+
+
+def test_full_clean_keeps_ticks_made_in_normal_mode(client, notify_calls):
+    chk = client.get("/api/checklist/Alice").json()
+    room = chk["room_name"]
+    client.post("/api/checklist/Alice", json={"tasks": [chk["tasks"][0]]})
+    assignments = _start(client)
+    holder = next(m for m, rooms in assignments.items() if room in rooms)
+    mine = {r["name"]: r for r in client.get(f"/api/checklist/{holder}").json()["rooms"]}
+    assert mine[room]["done"] == [chk["tasks"][0]]
+    assert client.get("/api/home").json()["done_map"][holder]["done"] == 1
+
+
+def test_checklist_post_empty_body_is_422(client):
+    r = client.post("/api/checklist/Alice", json={})
+    assert r.status_code == 422
+
+
+def test_checklist_normal_mode_drops_rooms_not_held(client):
+    other = "Bath"  # Alice holds Kitchen today
+    r = client.post("/api/checklist/Alice", json={"rooms": {other: ["Toilet"]}})
+    assert r.status_code == 200
+    assert client.get("/api/checklist/Bob").json()["done"] == []
+
+
+def test_full_clean_round_trips_through_config(client, notify_calls):
+    assignments = _start(client)
+    cfg = load_config(config_path())
+    assert cfg.full_clean_active and cfg.full_clean.assignments == assignments
+    raw = yaml.safe_load(config_path().read_text())
+    assert raw["full_clean"]["date"] == str(cfg.today)
+    client.delete("/api/full-clean")
+    assert "full_clean" not in yaml.safe_load(config_path().read_text())
+
+
+def test_full_clean_survives_notify_time_and_member_changes(client, notify_calls):
+    saved = _start(client)
+    client.post("/api/settings/notify-times", json={"time": "17:00"})
+    home = client.get("/api/home").json()
+    assert home["full_clean"] is True and home["full_clean_rooms"] == saved
+    client.post("/api/members", json={"name": "Cara"})
+    home = client.get("/api/home").json()
+    assert home["full_clean"] is True
+    assert home["full_clean_rooms"] == {**saved, "Cara": []}
+
+
+def test_two_members_on_one_room_share_ticks(client):
+    write_config({
+        **default_config(),
+        "members": [{"name": "Alice"}, {"name": "Bob"}, {"name": "Cara"}],
+        "rooms": [
+            {"name": "Kitchen", "tasks": ["Dishes", "Sweep"]},
+            {"name": "Bath", "tasks": ["Toilet"]},
+        ],
+    })
+    rooms = {m: client.get(f"/api/checklist/{m}").json()["room_name"] for m in ("Alice", "Bob", "Cara")}
+    shared = next(r for r in set(rooms.values()) if list(rooms.values()).count(r) == 2)
+    a, b = [m for m, r in rooms.items() if r == shared]
+    tasks = client.get(f"/api/checklist/{a}").json()["tasks"]
+    client.post(f"/api/checklist/{a}", json={"tasks": [tasks[0]]})
+    assert client.get(f"/api/checklist/{b}").json()["done"] == [tasks[0]]

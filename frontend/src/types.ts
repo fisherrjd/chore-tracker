@@ -25,6 +25,8 @@ export interface HomeData {
   half_cycle: number
   notify_times: string[]
   done_map: Record<string, DoneProgress>
+  full_clean: boolean
+  full_clean_rooms: Record<string, string[]>
 }
 
 export interface MembersData {
@@ -37,14 +39,36 @@ export interface SettingsData {
   timezone: string
 }
 
+export interface ChecklistRoom {
+  name: string
+  tasks: string[]
+  done: string[]
+}
+
 export interface ChecklistData {
   member: string
   room_name: string | null
   tasks: string[]
   done: string[]
+  full_clean: boolean
+  rooms: ChecklistRoom[]
+}
+
+export interface ChecklistSaved {
+  member: string
+  full_clean: boolean
+  done: string[]
+  rooms: ChecklistRoom[]
 }
 
 export interface NotifyResult {
+  sent: string[]
+  failed: string[]
+}
+
+export interface FullCleanResult {
+  active: boolean
+  assignments: Record<string, string[]>
   sent: string[]
   failed: string[]
 }

@@ -10,12 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .checks import get_done, set_done
-from .config import AppConfig, Member, Room, config_to_dict, load_config, save_config
+from .config import AppConfig, FullClean, Member, Room, config_to_dict, load_config, save_config
 from .lists import ListItem, ShoppingList, load_lists, save_lists
 from . import photos
 from .logging_config import configure_logging
 from .notifier import notify_disabled, notify_today
-from .scheduler import get_assignment, get_day_index, get_schedule
+from .scheduler import get_day_index, get_full_clean, get_schedule, todays_rooms
 
 BASE_DIR = Path(os.environ.get("CHORE_BASE", Path.cwd()))
 CONFIG_PATH = Path(os.environ.get("CHORE_CONFIG", BASE_DIR / "config.yaml"))
@@ -90,7 +90,8 @@ class AddNotifyTimeReq(BaseModel):
     time: str
 
 class UpdateChecklistReq(BaseModel):
-    tasks: list[str]
+    tasks: list[str] | None = None
+    rooms: dict[str, list[str]] | None = None
 
 class AddListReq(BaseModel):
     name: str
@@ -105,12 +106,17 @@ class SetListItemReq(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _todays_room(config: AppConfig, member: str) -> str | None:
-    idx = get_day_index(config.start_date, config.today)
-    assignments = get_assignment(
-        idx, [r.name for r in config.rooms], [m.name for m in config.members]
-    )
-    return assignments.get(member)
+def _member_rooms(config: AppConfig, member: str) -> list[Room]:
+    """The member's rooms today (normal mode: one), in assignment order."""
+    room_map = {r.name: r for r in config.rooms}
+    return [room_map[n] for n in todays_rooms(config).get(member, []) if n in room_map]
+
+
+def _rooms_json(config: AppConfig, idx: int, member: str) -> list[dict]:
+    return [
+        {"name": r.name, "tasks": r.tasks, "done": sorted(get_done(idx, r.name) & set(r.tasks))}
+        for r in _member_rooms(config, member)
+    ]
 
 
 def _save_notify_times(config: AppConfig, times: list[str]) -> AppConfig | None:
@@ -151,15 +157,16 @@ async def api_home():
     n_members = len(config.members)
     half_cycle = (n_rooms // n_members) if n_members else 0
     room_map = {r.name: r for r in config.rooms}
+    assignments = todays_rooms(config)
     done_map: dict[str, dict[str, int]] = {}
-    if schedule:
-        for person, room_name in schedule[0]["assignments"].items():
-            room = room_map.get(room_name)
+    for person, room_names in assignments.items():
+        done = total = 0
+        for name in room_names:
+            room = room_map.get(name)
             tasks = set(room.tasks) if room else set()
-            done_map[person] = {
-                "done": len(get_done(today_idx, person) & tasks),
-                "total": len(tasks),
-            }
+            done += len(get_done(today_idx, name) & tasks)
+            total += len(tasks)
+        done_map[person] = {"done": done, "total": total}
     return {
         "schedule": [
             {"date": str(day["date"]), "assignments": day["assignments"]}
@@ -169,6 +176,8 @@ async def api_home():
         "half_cycle": half_cycle,
         "notify_times": config.notify_times,
         "done_map": done_map,
+        "full_clean": config.full_clean_active,
+        "full_clean_rooms": assignments if config.full_clean_active else {},
     }
 
 
@@ -301,17 +310,26 @@ async def api_delete_notify_time(time: str):
     return {"notify_times": updated.notify_times if updated else remaining}
 
 
+def _checklist_json(config: AppConfig, idx: int, member: str) -> dict:
+    rooms = _rooms_json(config, idx, member)
+    first = rooms[0] if rooms else None
+    return {
+        "member": member,
+        "full_clean": config.full_clean_active,
+        "room_name": first["name"] if first else None,
+        "tasks": first["tasks"] if first else [],
+        "done": first["done"] if first else [],
+        "rooms": rooms,
+    }
+
+
 @app.get("/api/checklist/{member}")
 async def api_checklist_get(member: str):
     config = load_config(CONFIG_PATH)
     if not any(m.name == member for m in config.members):
         raise HTTPException(status_code=404, detail=f"Unknown member '{member}'")
     idx = get_day_index(config.start_date, config.today)
-    room_name = _todays_room(config, member)
-    room = next((r for r in config.rooms if r.name == room_name), None)
-    tasks = room.tasks if room else []
-    done = sorted(get_done(idx, member) & set(tasks))
-    return {"member": member, "room_name": room_name, "tasks": tasks, "done": done}
+    return _checklist_json(config, idx, member)
 
 
 @app.post("/api/checklist/{member}")
@@ -319,16 +337,57 @@ async def api_checklist_post(member: str, req: UpdateChecklistReq):
     config = load_config(CONFIG_PATH)
     if not any(m.name == member for m in config.members):
         raise HTTPException(status_code=404, detail=f"Unknown member '{member}'")
+    if req.tasks is None and req.rooms is None:
+        raise HTTPException(status_code=422, detail="Send tasks or rooms")
     idx = get_day_index(config.start_date, config.today)
-    room = next((r for r in config.rooms if r.name == _todays_room(config, member)), None)
-    valid = set(room.tasks) if room else set()
-    recorded = [t for t in req.tasks if t in valid]
-    set_done(idx, member, recorded)
-    log.info(
-        "checklist.updated",
-        extra={"member": member, "room": room.name if room else None, "done": len(recorded)},
+    mine = {r.name: r for r in _member_rooms(config, member)}
+    wanted = dict(req.rooms or {})
+    if req.tasks is not None and mine:
+        wanted.setdefault(next(iter(mine)), req.tasks)
+    for name, tasks in wanted.items():
+        room = mine.get(name)
+        if room is None:
+            continue
+        recorded = [t for t in tasks if t in set(room.tasks)]
+        set_done(idx, name, recorded)
+        log.info(
+            "checklist.updated",
+            extra={"member": member, "room": name, "done": len(recorded)},
+        )
+    out = _checklist_json(config, idx, member)
+    return {k: out[k] for k in ("member", "full_clean", "done", "rooms")}
+
+
+@app.post("/api/full-clean")
+async def api_full_clean_start():
+    config = load_config(CONFIG_PATH)
+    if not config.rooms or not config.members:
+        raise HTTPException(status_code=409, detail="Add rooms and members first")
+    if config.full_clean_active:
+        return {"active": True, "assignments": todays_rooms(config), "sent": [], "failed": []}
+    idx = get_day_index(config.start_date, config.today)
+    config.full_clean = FullClean(
+        date=config.today,
+        assignments=get_full_clean(idx, config.rooms, [m.name for m in config.members]),
     )
-    return {"member": member, "done": recorded}
+    save_config(config, CONFIG_PATH)
+    log.info("full_clean.started", extra={"date": str(config.today)})
+    results = await notify_today(config, trigger="full_clean")
+    return {
+        "active": True,
+        "assignments": todays_rooms(config),
+        "sent": [n for n, ok in results.items() if ok],
+        "failed": [n for n, ok in results.items() if not ok],
+    }
+
+
+@app.delete("/api/full-clean")
+async def api_full_clean_stop():
+    config = load_config(CONFIG_PATH)
+    config.full_clean = None
+    save_config(config, CONFIG_PATH)
+    log.info("full_clean.stopped")
+    return {"active": False}
 
 
 # ── Shopping lists ────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import type {
   ChecklistData,
+  ChecklistSaved,
+  FullCleanResult,
   HomeData,
   MembersData,
   Member,
@@ -79,6 +81,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ tasks }),
     }),
+
+  updateChecklistRooms: (member: string, rooms: Record<string, string[]>) =>
+    req<ChecklistSaved>(`/api/checklist/${encodeURIComponent(member)}`, {
+      method: 'POST',
+      body: JSON.stringify({ rooms }),
+    }),
+
+  startFullClean: () => req<FullCleanResult>('/api/full-clean', { method: 'POST' }),
+  stopFullClean: () => req<FullCleanResult>('/api/full-clean', { method: 'DELETE' }),
 
   notifyToday: () => req<NotifyResult>('/api/notify/today', { method: 'POST' }),
 
