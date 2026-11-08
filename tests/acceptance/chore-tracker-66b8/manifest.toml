@@ -1,0 +1,19 @@
+[[test]]
+id = "c1"
+file = "tests/c1.spec.ts"
+covers = ["frontend/src/views/HomeView.vue", "frontend/src/lib/api.ts", "frontend/src/types.ts", "chore_tracker/main.py", "chore_tracker/scheduler.py", "chore_tracker/config.py", "chore_tracker/notifier.py"]
+
+[[test]]
+id = "c2"
+file = "tests/c2.spec.ts"
+covers = ["frontend/src/views/ChecklistView.vue", "frontend/src/views/HomeView.vue", "frontend/src/components/project/Checklist.vue", "frontend/src/lib/api.ts", "frontend/src/types.ts", "chore_tracker/main.py", "chore_tracker/checks.py", "chore_tracker/scheduler.py", "chore_tracker/config.py"]
+
+[[test]]
+id = "c3"
+file = "tests/c3.spec.ts"
+covers = ["frontend/src/views/HomeView.vue", "frontend/src/lib/api.ts", "frontend/src/types.ts", "chore_tracker/main.py", "chore_tracker/scheduler.py", "chore_tracker/config.py"]
+
+[[test]]
+id = "c4"
+file = "tests/c4.spec.ts"
+covers = ["chore_tracker/main.py", "chore_tracker/scheduler.py", "chore_tracker/config.py", "chore_tracker/checks.py", "chore_tracker/notifier.py"]
