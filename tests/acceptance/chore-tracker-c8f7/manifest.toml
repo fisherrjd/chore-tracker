@@ -1,0 +1,19 @@
+[[test]]
+id = "c1"
+file = "tests/c1.spec.ts"
+covers = ["frontend/src/views/ListsView.vue", "frontend/src/lib/api.ts", "frontend/src/lib/photo.ts", "frontend/src/components/project/ItemPhoto.vue", "chore_tracker/main.py", "chore_tracker/lists.py", "chore_tracker/photos.py"]
+
+[[test]]
+id = "c2"
+file = "tests/c2.spec.ts"
+covers = ["frontend/src/views/ListsView.vue", "frontend/src/lib/api.ts", "frontend/src/lib/photo.ts", "frontend/src/components/project/ItemPhoto.vue", "chore_tracker/main.py", "chore_tracker/lists.py", "chore_tracker/photos.py"]
+
+[[test]]
+id = "c3"
+file = "tests/c3.spec.ts"
+covers = ["chore_tracker/main.py", "chore_tracker/lists.py", "chore_tracker/photos.py"]
+
+[[test]]
+id = "c4"
+file = "tests/c4.spec.ts"
+covers = ["frontend/src/views/ListsView.vue", "frontend/src/lib/api.ts", "frontend/src/lib/photo.ts", "frontend/src/components/project/ItemPhoto.vue", "chore_tracker/main.py", "chore_tracker/lists.py", "chore_tracker/photos.py"]
