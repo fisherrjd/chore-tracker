@@ -1,0 +1,1748 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Chore Tracker",
+    "version": "0.5.2",
+    "description": "Household chore rotation and shopping lists. No authentication: the app is meant to sit on a private network. Errors are JSON {\"detail\": \"...\"}."
+  },
+  "paths": {
+    "/api/home": {
+      "get": {
+        "summary": "Today's assignments, 14-day schedule and full-clean state",
+        "tags": [
+          "Home"
+        ],
+        "responses": {
+          "200": {
+            "description": "Home screen data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Home"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedule": {
+      "get": {
+        "summary": "14-day rotation schedule (ignores a full clean)",
+        "tags": [
+          "Home"
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per day starting today",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduleDay"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms": {
+      "get": {
+        "summary": "List rooms",
+        "tags": [
+          "Rooms"
+        ],
+        "responses": {
+          "200": {
+            "description": "Rooms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Room"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a room",
+        "tags": [
+          "Rooms"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name is empty or the room already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{name}": {
+      "delete": {
+        "summary": "Remove a room",
+        "tags": [
+          "Rooms"
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Room not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Room name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/rooms/{room_name}/tasks": {
+      "post": {
+        "summary": "Add a task to a room",
+        "tags": [
+          "Rooms"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "task"
+                  ],
+                  "properties": {
+                    "task": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Room not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task is empty or already in the room",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "description": "Room name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/tasks/{task}": {
+      "delete": {
+        "summary": "Remove a task from a room (succeeds even if the task is absent)",
+        "tags": [
+          "Rooms"
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Room not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "description": "Room name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "description": "Task text",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/members": {
+      "get": {
+        "summary": "List members with their ntfy topic links",
+        "tags": [
+          "Members"
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "members",
+                    "ntfy_base_url"
+                  ],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Member"
+                      }
+                    },
+                    "ntfy_base_url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a member",
+        "tags": [
+          "Members"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name is empty or the member already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/members/{name}": {
+      "delete": {
+        "summary": "Remove a member",
+        "tags": [
+          "Members"
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Member not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Member name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "Notify times and timezone",
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "notify_times",
+                    "timezone"
+                  ],
+                  "properties": {
+                    "notify_times": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "timezone": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/notify-times": {
+      "post": {
+        "summary": "Add a daily notify time (HH:MM, zero-padded, deduped, sorted)",
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "201": {
+            "description": "Updated times",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTimes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a valid HH:MM time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/notify-times/{time}": {
+      "delete": {
+        "summary": "Remove a notify time (succeeds even if absent)",
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Remaining times",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTimes"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "description": "Time as stored, e.g. 08:00",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/checklist/{member}": {
+      "get": {
+        "summary": "Today's checklist for a member",
+        "tags": [
+          "Checklist"
+        ],
+        "responses": {
+          "200": {
+            "description": "Checklist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Checklist"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "description": "Member name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Record ticked tasks. Send tasks (applies to the member's first room) and/or rooms (replaces the listed rooms). Rooms the member does not hold today and unknown tasks are ignored.",
+        "tags": [
+          "Checklist"
+        ],
+        "responses": {
+          "200": {
+            "description": "State after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "member",
+                    "full_clean",
+                    "done",
+                    "rooms"
+                  ],
+                  "properties": {
+                    "member": {
+                      "type": "string"
+                    },
+                    "full_clean": {
+                      "type": "boolean"
+                    },
+                    "done": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "rooms": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChecklistRoom"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Neither tasks nor rooms sent (detail 'Send tasks or rooms'), or a malformed body"
+          }
+        },
+        "parameters": [
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "description": "Member name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChecklistReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/full-clean": {
+      "post": {
+        "summary": "Start a full house clean for today: split all rooms between members by task count and notify. If one is already active, returns it unchanged without notifying.",
+        "tags": [
+          "Full clean"
+        ],
+        "responses": {
+          "200": {
+            "description": "Full clean state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FullCleanState"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No rooms or no members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Back to the normal rotation (no notification)",
+        "tags": [
+          "Full clean"
+        ],
+        "responses": {
+          "200": {
+            "description": "Stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "active"
+                  ],
+                  "properties": {
+                    "active": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lists": {
+      "get": {
+        "summary": "List shopping lists",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShoppingList"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a shopping list",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name is empty or the list already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lists/{list_name}": {
+      "delete": {
+        "summary": "Remove a list and its item photos",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/lists/{list_name}/items": {
+      "post": {
+        "summary": "Add an item. Re-adding a bought item puts it back on the list.",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "201": {
+            "description": "Updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Item is empty or already on the list (not bought)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemReq"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Set (not toggle) an item's bought state",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item not on the list (or list missing)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetItemReq"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lists/{list_name}/items/{item}": {
+      "delete": {
+        "summary": "Remove an item and its photo. The item segment may contain slashes. Succeeds even if the item is absent.",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "item",
+            "in": "path",
+            "required": true,
+            "description": "Item name (may contain '/')",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/lists/{list_name}/clear": {
+      "post": {
+        "summary": "Drop all bought items (and their photos)",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated list plus the number removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ShoppingList"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "removed"
+                      ],
+                      "properties": {
+                        "removed": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/lists/{list_name}/photo": {
+      "put": {
+        "summary": "Set or replace an item's photo. Checks in order: list, item, size, type.",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List or item not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Photo larger than 10 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Not a JPEG, PNG, WebP or GIF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request body failed validation (FastAPI default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "item",
+                  "file"
+                ],
+                "properties": {
+                  "item": {
+                    "type": "string",
+                    "description": "Item name"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "JPEG, PNG, WebP or GIF, at most 10 MB"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lists/{list_name}/photo/{item}": {
+      "delete": {
+        "summary": "Remove an item's photo",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "List or item not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "list_name",
+            "in": "path",
+            "required": true,
+            "description": "Shopping list name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "item",
+            "in": "path",
+            "required": true,
+            "description": "Item name (may contain '/')",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/photos/{name}": {
+      "get": {
+        "summary": "Serve a stored photo (cached as immutable for a year)",
+        "tags": [
+          "Lists"
+        ],
+        "responses": {
+          "200": {
+            "description": "The image",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/gif": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Name is not <32 hex>.<jpg|png|gif|webp> or no such file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The file name from image_url, e.g. 0123...cdef.jpg",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}\\.(jpg|png|gif|webp)$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/notify/today": {
+      "post": {
+        "summary": "Send today's ntfy notifications now (empty lists when CHORE_NOTIFY=off)",
+        "tags": [
+          "Notify"
+        ],
+        "responses": {
+          "200": {
+            "description": "Who was reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sent",
+                    "failed"
+                  ],
+                  "properties": {
+                    "sent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "failed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{full_path}": {
+      "get": {
+        "summary": "Single-page app. Any path not matched above returns frontend/dist/index.html (this is how /, /lists, /rooms, /members, /settings and /checklist/{member} load). The path may contain slashes.",
+        "tags": [
+          "Pages"
+        ],
+        "responses": {
+          "200": {
+            "description": "The built SPA",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Frontend not built (frontend/dist/index.html missing)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "full_path",
+            "in": "path",
+            "required": true,
+            "description": "Any path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Detail": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "NameReq": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskReq": {
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "type": "string"
+          }
+        }
+      },
+      "TimeReq": {
+        "type": "object",
+        "required": [
+          "time"
+        ],
+        "properties": {
+          "time": {
+            "type": "string"
+          }
+        }
+      },
+      "ItemReq": {
+        "type": "object",
+        "required": [
+          "item"
+        ],
+        "properties": {
+          "item": {
+            "type": "string"
+          }
+        }
+      },
+      "SetItemReq": {
+        "type": "object",
+        "required": [
+          "item",
+          "done"
+        ],
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ChecklistReq": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "rooms": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          }
+        }
+      },
+      "Room": {
+        "type": "object",
+        "required": [
+          "name",
+          "tasks"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "required": [
+          "name",
+          "topic",
+          "ntfy_url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Lower-cased name"
+          },
+          "ntfy_url": {
+            "type": "string"
+          }
+        }
+      },
+      "NotifyTimes": {
+        "type": "object",
+        "required": [
+          "notify_times"
+        ],
+        "properties": {
+          "notify_times": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScheduleDay": {
+        "type": "object",
+        "required": [
+          "date",
+          "assignments"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "assignments": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "member name -> room name"
+          }
+        }
+      },
+      "Home": {
+        "type": "object",
+        "required": [
+          "schedule",
+          "today_idx",
+          "half_cycle",
+          "notify_times",
+          "done_map",
+          "full_clean",
+          "full_clean_rooms"
+        ],
+        "properties": {
+          "schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleDay"
+            }
+          },
+          "today_idx": {
+            "type": "integer"
+          },
+          "half_cycle": {
+            "type": "integer"
+          },
+          "notify_times": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "done_map": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "done",
+                "total"
+              ],
+              "properties": {
+                "done": {
+                  "type": "integer"
+                },
+                "total": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "full_clean": {
+            "type": "boolean"
+          },
+          "full_clean_rooms": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "member name -> room names"
+          }
+        }
+      },
+      "ChecklistRoom": {
+        "type": "object",
+        "required": [
+          "name",
+          "tasks",
+          "done"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "done": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Checklist": {
+        "type": "object",
+        "required": [
+          "member",
+          "full_clean",
+          "room_name",
+          "tasks",
+          "done",
+          "rooms"
+        ],
+        "properties": {
+          "member": {
+            "type": "string"
+          },
+          "full_clean": {
+            "type": "boolean"
+          },
+          "room_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "done": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChecklistRoom"
+            }
+          }
+        }
+      },
+      "FullCleanState": {
+        "type": "object",
+        "required": [
+          "active",
+          "assignments",
+          "sent",
+          "failed"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "assignments": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "member name -> room names"
+          },
+          "sent": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListItem": {
+        "type": "object",
+        "required": [
+          "name",
+          "done",
+          "image_url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "image_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "/api/photos/<file> or null"
+          }
+        }
+      },
+      "ShoppingList": {
+        "type": "object",
+        "required": [
+          "name",
+          "items",
+          "remaining",
+          "bought"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListItem"
+            }
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "bought": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}
