@@ -24,6 +24,10 @@ ui-update                    # devshell: pull the latest @fisherrjd/ui, typechec
 
 There is no linter/formatter configured in this repo.
 
+## Docs
+
+`docs/usage.md` (for people) and `openapi.json` (the HTTP API spec) must be kept current with every change. The spec is hand-written (the routes have no response models, so FastAPI's generated spec would lack response schemas and error codes): when you add, remove or change a route, edit `openapi.json` by hand, keeping 2-space indent and a trailing newline.
+
 ## Architecture
 
 ### Backend (`chore_tracker/`)
